@@ -1,0 +1,26 @@
+[Unit]
+Description=Stock Time Series Database
+After=network.target
+
+[Service]
+Type=simple
+User=stock-tsdb
+Group=stock-tsdb
+ExecStart=/usr/local/bin/stock-tsdb-server -c /usr/local/etc/stock-tsdb.conf
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=32768
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,392 @@
+{
+  "user_behavior": {
+    "compression": "lz4",
+    "name": "用户行为",
+    "fields": {
+      "1": {
+        "description": "用户ID",
+        "type": "string",
+        "name": "user_id"
+      },
+      "2": {
+        "description": "行为类型",
+        "type": "string",
+        "name": "action"
+      },
+      "3": {
+        "description": "页面",
+        "type": "string",
+        "name": "page"
+      },
+      "4": {
+        "description": "停留时长(秒)",
+        "type": "int32",
+        "name": "duration"
+      }
+    },
+    "description": "用户点击、浏览等行为数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "user_id",
+      "3": "action"
+    },
+    "retention_days": 30,
+    "block_size": 60,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 7,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "my_stock_quotes": {
+    "compression": "zstd",
+    "name": "金融行情（更新）",
+    "fields": {
+      "1": {
+        "description": "开盘价",
+        "type": "double",
+        "name": "open"
+      },
+      "2": {
+        "description": "最高价",
+        "type": "double",
+        "name": "high"
+      },
+      "3": {
+        "description": "最低价",
+        "type": "double",
+        "name": "low"
+      },
+      "4": {
+        "description": "收盘价",
+        "type": "double",
+        "name": "close"
+      },
+      "5": {
+        "description": "成交量",
+        "type": "int64",
+        "name": "volume"
+      },
+      "6": {
+        "description": "成交额",
+        "type": "double",
+        "name": "amount"
+      },
+      "7": {
+        "description": "市盈率",
+        "type": "double",
+        "name": "pe_ratio"
+      }
+    },
+    "description": "股票、期货、外汇等金融行情数据（已更新）",
+    "indexes": {
+      "1": "timestamp",
+      "2": "symbol"
+    },
+    "retention_days": 365,
+    "block_size": 30,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 30,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "sms": {
+    "compression": "lz4",
+    "name": "短信下发",
+    "fields": {
+      "1": {
+        "description": "短信ID",
+        "type": "string",
+        "name": "sms_id"
+      },
+      "2": {
+        "description": "手机号",
+        "type": "string",
+        "name": "phone"
+      },
+      "3": {
+        "description": "短信内容",
+        "type": "string",
+        "name": "content"
+      },
+      "4": {
+        "description": "发送状态",
+        "type": "string",
+        "name": "status"
+      },
+      "5": {
+        "description": "服务商",
+        "type": "string",
+        "name": "provider"
+      }
+    },
+    "description": "短信发送、通知等业务数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "sms_id",
+      "3": "phone"
+    },
+    "retention_days": 30,
+    "block_size": 60,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 7,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "my_orders": {
+    "compression": "lz4",
+    "business_id": "my_orders",
+    "name": "订单数据",
+    "block_size": 60,
+    "description": "电商订单、交易订单等业务数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "order_id",
+      "3": "user_id"
+    },
+    "retention_days": 365,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 30,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    },
+    "fields": {
+      "1": {
+        "description": "订单ID",
+        "type": "string",
+        "name": "order_id"
+      },
+      "2": {
+        "description": "用户ID",
+        "type": "string",
+        "name": "user_id"
+      },
+      "3": {
+        "description": "订单金额",
+        "type": "double",
+        "name": "amount"
+      },
+      "4": {
+        "description": "订单状态",
+        "type": "string",
+        "name": "status"
+      },
+      "5": {
+        "description": "商品数量",
+        "type": "int32",
+        "name": "product_count"
+      }
+    }
+  },
+  "orders": {
+    "compression": "lz4",
+    "name": "订单数据",
+    "fields": {
+      "1": {
+        "description": "订单ID",
+        "type": "string",
+        "name": "order_id"
+      },
+      "2": {
+        "description": "用户ID",
+        "type": "string",
+        "name": "user_id"
+      },
+      "3": {
+        "description": "订单金额",
+        "type": "double",
+        "name": "amount"
+      },
+      "4": {
+        "description": "订单状态",
+        "type": "string",
+        "name": "status"
+      },
+      "5": {
+        "description": "商品数量",
+        "type": "int32",
+        "name": "product_count"
+      }
+    },
+    "description": "电商订单、交易订单等业务数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "order_id",
+      "3": "user_id"
+    },
+    "retention_days": 365,
+    "block_size": 60,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 30,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "inventory": {
+    "compression": "lz4",
+    "name": "库存数据",
+    "fields": {
+      "1": {
+        "description": "商品SKU",
+        "type": "string",
+        "name": "sku_id"
+      },
+      "2": {
+        "description": "库存数量",
+        "type": "int32",
+        "name": "quantity"
+      },
+      "3": {
+        "description": "预留数量",
+        "type": "int32",
+        "name": "reserved"
+      },
+      "4": {
+        "description": "可用数量",
+        "type": "int32",
+        "name": "available"
+      },
+      "5": {
+        "description": "仓库",
+        "type": "string",
+        "name": "warehouse"
+      }
+    },
+    "description": "商品库存、仓储等业务数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "sku_id",
+      "3": "warehouse"
+    },
+    "retention_days": 90,
+    "block_size": 300,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 30,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "payments": {
+    "compression": "zstd",
+    "name": "支付数据",
+    "fields": {
+      "1": {
+        "description": "支付ID",
+        "type": "string",
+        "name": "payment_id"
+      },
+      "2": {
+        "description": "订单ID",
+        "type": "string",
+        "name": "order_id"
+      },
+      "3": {
+        "description": "支付金额",
+        "type": "double",
+        "name": "amount"
+      },
+      "4": {
+        "description": "支付方式",
+        "type": "string",
+        "name": "payment_method"
+      },
+      "5": {
+        "description": "支付状态",
+        "type": "string",
+        "name": "status"
+      },
+      "6": {
+        "description": "手续费",
+        "type": "double",
+        "name": "fee"
+      }
+    },
+    "description": "支付、结算等金融交易数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "payment_id",
+      "3": "order_id"
+    },
+    "retention_days": 2555,
+    "block_size": 60,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 90,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  },
+  "stock_quotes": {
+    "compression": "lz4",
+    "name": "金融行情",
+    "fields": {
+      "1": {
+        "description": "开盘价",
+        "type": "double",
+        "name": "open"
+      },
+      "2": {
+        "description": "最高价",
+        "type": "double",
+        "name": "high"
+      },
+      "3": {
+        "description": "最低价",
+        "type": "double",
+        "name": "low"
+      },
+      "4": {
+        "description": "收盘价",
+        "type": "double",
+        "name": "close"
+      },
+      "5": {
+        "description": "成交量",
+        "type": "int64",
+        "name": "volume"
+      },
+      "6": {
+        "description": "成交额",
+        "type": "double",
+        "name": "amount"
+      }
+    },
+    "description": "股票、期货、外汇等金融行情数据",
+    "indexes": {
+      "1": "timestamp",
+      "2": "symbol"
+    },
+    "retention_days": 180,
+    "block_size": 30,
+    "cold_hot_config": {
+      "enable_separation": true,
+      "hot_data_days": 7,
+      "cold_data_compression": "zstd",
+      "hot_data_compression": "lz4",
+      "disable_cold_compaction": true,
+      "cleanup_interval_hours": 24
+    }
+  }
+}

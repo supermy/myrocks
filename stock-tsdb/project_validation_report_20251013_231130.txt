@@ -1,0 +1,94 @@
+# Stock-TSDB 项目完整性验证报告
+生成时间: 2025年10月13日 星期一 23时11分30秒 CST
+
+✓ 文件存在且非空: README.md (   22597 字节)
+✓ 文件存在且非空: CHANGELOG.md (    1731 字节)
+✓ 文件存在且非空: DOCUMENTATION_INDEX.md (    6261 字节)
+✓ 文件存在且非空: PROJECT_STRUCTURE.md (    7480 字节)
+✓ 文件存在且非空: Makefile (   62370 字节)
+✓ 文件存在且非空: Dockerfile (    1775 字节)
+✓ 文件存在且非空: LICENSE (    2423 字节)
+✓ 文件存在且非空: .gitignore (     983 字节)
+✗ 文件/目录缺失: conf/config.lua
+✗ 文件/目录缺失: conf/redis.conf
+✗ 文件/目录缺失: src/main.lua
+✗ 文件/目录缺失: src/core/
+✗ 文件/目录缺失: src/storage/
+✗ 文件/目录缺失: src/api/
+✓ 目录存在: scripts/
+✓ 目录存在: docs/
+✓ 目录存在: tests/
+✓ 目录存在: data/
+✓ 目录存在: logs/
+✓ 脚本可执行: scripts/install/install.sh
+✓ 脚本可执行: scripts/install/production_deploy.sh
+✓ 脚本可执行: scripts/install/monitor_production.sh
+✓ 脚本可执行: scripts/start_business_web.sh
+✓ 脚本可执行: scripts/check_project_status.sh
+✗ 脚本不可执行: scripts/setup_dev_env.sh
+✓ 脚本可执行: scripts/validate_project.sh
+✓ 文档存在: docs/guides/QUICK_START.md (    4896 字节)
+✗ 文档缺失: docs/architecture/SYSTEM_ARCHITECTURE.md
+✗ 文档缺失: docs/API_REFERENCE.md
+✗ 文件结构检查发现问题
+  缺失文件: conf/config.lua conf/redis.conf src/main.lua src/core/ src/storage/ src/api/ docs/architecture/SYSTEM_ARCHITECTURE.md docs/API_REFERENCE.md
+  无效文件: scripts/setup_dev_env.sh
+✓ 工具已安装: luajit
+✓ 工具已安装: luarocks
+✓ 工具已安装: make
+✓ 工具已安装: curl
+✓ 工具已安装: git
+✓ Lua依赖已安装: lua-cjson
+✓ Lua依赖已安装: luasocket
+✓ Lua依赖已安装: busted
+✓ 依赖检查通过
+✗ 配置文件缺失: conf/config.lua
+✗ 配置文件缺失: conf/redis.conf
+✗ 开发环境配置缺失: conf/dev.env
+✗ 配置检查发现问题
+  无效配置: conf/config.lua conf/redis.conf conf/dev.env
+✓ Makefile目标有效: build
+✓ Makefile目标有效: clean
+✓ Makefile目标有效: test-quick
+✓ Makefile目标有效: health-check
+✓ 项目构建成功
+✓ 构建检查通过
+✗ 测试文件缺失: tests/test_core.lua
+✓ 测试文件存在: tests/test_storage.lua
+✗ 测试文件缺失: tests/test_api.lua
+✓ 快速测试通过
+✗ 测试检查发现问题
+  测试问题: tests/test_core.lua tests/test_api.lua
+✗ 服务未运行: Redis集群服务器 (端口: 6379)
+✗ 服务未运行: 元数据Web服务器 (端口: 8080)
+✗ 服务未运行: 业务数据Web服务器 (端口: 8081)
+✗ 服务检查发现问题
+  未运行服务: Redis集群服务器 元数据Web服务器 业务数据Web服务器
+
+=== Stock-TSDB 项目完整性验证报告 ===
+验证时间: 2025年10月13日 星期一 23时11分31秒 CST
+验证类型: all
+项目路径: /Users/moyong/project/ai/myrocks/stock-tsdb
+
+✗ 文件结构: 失败
+✓ 依赖: 通过
+✗ 配置: 失败
+✓ 构建: 通过
+✗ 测试: 失败
+✗ 服务: 失败
+
+=== 验证结果汇总 ===
+总检查项: 6
+通过项: 2
+失败项: 4
+通过率: 33%
+
+⚠️ 项目完整性验证发现 4 个问题
+请根据报告中的问题描述进行修复。
+
+=== 建议操作 ===
+1. 查看详细错误信息
+2. 运行修复命令: ./scripts/validate_project.sh -c all -f
+3. 重新验证项目
+4. 查看文档: cat docs/guides/QUICK_START.md
+5. 启动服务: make dev-start

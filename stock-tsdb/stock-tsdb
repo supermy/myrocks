@@ -1,0 +1,257 @@
+#!/usr/bin/env luajit
+--
+-- 股票行情数据TSDB系统启动脚本
+-- 提供命令行接口和系统管理功能
+--
+
+-- 添加Lua模块搜索路径
+package.path = package.path .. ";./lua/?.lua;./src/?.lua"
+package.cpath = package.cpath .. ";./lib/?.so;./lib/?.dylib"
+
+-- 加载系统模块
+local tsdb = require "main"
+local cjson = require "cjson"
+
+-- 全局系统实例
+local system = nil
+
+-- 命令行参数解析
+local function parse_args(args)
+    local options = {
+        config = "conf/stock-tsdb.conf",
+        daemon = false,
+        command = "start",
+        help = false
+    }
+    
+    local i = 1
+    while i <= #args do
+        local arg = args[i]
+        
+        if arg == "-c" or arg == "--config" then
+            i = i + 1
+            options.config = args[i]
+        elseif arg == "-d" or arg == "--daemon" then
+            options.daemon = true
+        elseif arg == "-h" or arg == "--help" then
+            options.help = true
+        elseif arg == "start" or arg == "stop" or arg == "restart" or 
+               arg == "status" or arg == "metrics" or arg == "reload" then
+            options.command = arg
+        else
+            print("未知参数: " .. arg)
+            options.help = true
+        end
+        
+        i = i + 1
+    end
+    
+    return options
+end
+
+-- 显示帮助信息
+local function show_help()
+    print("股票行情数据TSDB系统")
+    print("用法: stock-tsdb [选项] [命令]")
+    print("")
+    print("选项:")
+    print("  -c, --config <文件>    指定配置文件 (默认: conf/stock-tsdb.conf)")
+    print("  -d, --daemon           以守护进程模式运行")
+    print("  -h, --help             显示帮助信息")
+    print("")
+    print("命令:")
+    print("  start                  启动系统")
+    print("  stop                   停止系统")
+    print("  restart                重启系统")
+    print("  status                 显示系统状态")
+    print("  metrics                显示系统指标")
+    print("  reload                 重新加载配置")
+    print("")
+    print("示例:")
+    print("  stock-tsdb start                    # 启动系统")
+    print("  stock-tsdb -c custom.conf start     # 使用自定义配置启动")
+    print("  stock-tsdb -d start                 # 以守护进程模式启动")
+    print("  stock-tsdb status                   # 查看系统状态")
+    print("  stock-tsdb stop                     # 停止系统")
+end
+
+-- 信号处理
+local function setup_signal_handlers()
+    -- 处理SIGINT (Ctrl+C)
+    local function sigint_handler()
+        print("\n[StockTSDB] 收到中断信号，正在停止系统...")
+        if system then
+            system:stop()
+        end
+        os.exit(0)
+    end
+    
+    -- 处理SIGTERM
+    local function sigterm_handler()
+        print("\n[StockTSDB] 收到终止信号，正在停止系统...")
+        if system then
+            system:stop()
+        end
+        os.exit(0)
+    end
+    
+    -- 处理SIGHUP (配置重载)
+    local function sighup_handler()
+        print("\n[StockTSDB] 收到挂起信号，重新加载配置...")
+        if system then
+            local success, result = system:reload_config()
+            if success then
+                print("[StockTSDB] 配置重新加载成功")
+            else
+                print("[StockTSDB] 配置重新加载失败: " .. tostring(result))
+            end
+        end
+    end
+    
+    -- 设置信号处理器（如果可用）
+    local signal = require "signal"
+    if signal then
+        signal.signal("INT", sigint_handler)
+        signal.signal("TERM", sigterm_handler)
+        signal.signal("HUP", sighup_handler)
+    end
+end
+
+-- 守护进程化
+local function daemonize()
+    -- 检查是否在类Unix系统上
+    if os.getenv("WINDIR") then
+        print("[StockTSDB] Windows系统不支持守护进程模式")
+        return false
+    end
+    
+    -- 创建子进程
+    local pid = os.execute("nohup " .. arg[0] .. " " .. table.concat(arg, " ") .. " > /dev/null 2>&1 &")
+    if pid and pid > 0 then
+        print("[StockTSDB] 守护进程已启动，PID: " .. pid)
+        os.exit(0)
+    else
+        print("[StockTSDB] 守护进程化失败")
+        return false
+    end
+end
+
+-- 主函数
+local function main(...)
+    -- 解析命令行参数
+    local args = {...}
+    local options = parse_args(args)
+    
+    -- 显示帮助
+    if options.help then
+        show_help()
+        os.exit(0)
+    end
+    
+    -- 守护进程化
+    if options.daemon and options.command == "start" then
+        daemonize()
+    end
+    
+    -- 设置信号处理器
+    setup_signal_handlers()
+    
+    -- 创建系统实例
+    print("[StockTSDB] 创建系统实例...")
+    system = tsdb.create_system(options.config)
+    
+    -- 执行命令
+    if options.command == "start" then
+        print("[StockTSDB] 初始化系统...")
+        local success, error = system:initialize()
+        if not success then
+            print("[StockTSDB] 系统初始化失败: " .. tostring(error))
+            os.exit(1)
+        end
+        
+        print("[StockTSDB] 启动系统...")
+        success, error = system:start()
+        if not success then
+            print("[StockTSDB] 系统启动失败: " .. tostring(error))
+            os.exit(1)
+        end
+        
+        print("[StockTSDB] 系统启动成功，正在运行...")
+        print("[StockTSDB] 按 Ctrl+C 停止系统")
+        
+        -- 主循环
+        while true do
+            -- 简单的忙等待循环
+            -- 在实际实现中，这里应该使用事件循环
+            local sleep_time = 1
+            local start = os.time()
+            while os.time() - start < sleep_time do
+                -- 空循环
+            end
+            
+            -- 检查系统状态
+            if not system.is_running then
+                break
+            end
+        end
+        
+    elseif options.command == "stop" then
+        print("[StockTSDB] 停止系统...")
+        system:stop()
+        print("[StockTSDB] 系统已停止")
+        
+    elseif options.command == "restart" then
+        print("[StockTSDB] 重启系统...")
+        local success, error = system:restart()
+        if not success then
+            print("[StockTSDB] 系统重启失败: " .. tostring(error))
+            os.exit(1)
+        end
+        print("[StockTSDB] 系统重启成功")
+        
+    elseif options.command == "status" then
+        local status = system:get_status()
+        print("[StockTSDB] 系统状态:")
+        print(cjson.encode(status))
+        
+    elseif options.command == "metrics" then
+        local metrics = system:get_metrics()
+        print("[StockTSDB] 系统指标:")
+        print(cjson.encode(metrics))
+        
+    elseif options.command == "reload" then
+        print("[StockTSDB] 重新加载配置...")
+        local success, result = system:reload_config()
+        if success then
+            print("[StockTSDB] 配置重新加载成功")
+        else
+            print("[StockTSDB] 配置重新加载失败: " .. tostring(result))
+            os.exit(1)
+        end
+        
+    else
+        print("[StockTSDB] 未知命令: " .. options.command)
+        show_help()
+        os.exit(1)
+    end
+end
+
+-- 错误处理
+local function error_handler(err)
+    print("[StockTSDB] 发生错误: " .. tostring(err))
+    print(debug.traceback())
+    
+    -- 尝试停止系统
+    if system then
+        pcall(function() system:stop() end)
+    end
+    
+    os.exit(1)
+end
+
+-- 运行主函数
+local ok, result = xpcall(main, error_handler)
+if not ok then
+    print("[StockTSDB] 程序异常终止: " .. tostring(result))
+    os.exit(1)
+end

@@ -1,0 +1,206 @@
+return {
+  ["payments"] = {
+    ["block_size"] = 60,
+    ["name"] = "支付数据",
+    ["indexes"] = {
+      1 = "timestamp",
+      2 = "payment_id",
+      3 = "order_id"
+    },
+    ["description"] = "支付、结算等金融交易数据",
+    ["retention_days"] = 2555,
+    ["compression"] = "zstd",
+    ["fields"] = {
+      1 = {
+        ["name"] = "payment_id",
+        ["type"] = "string",
+        ["description"] = "支付ID"
+      },
+      2 = {
+        ["name"] = "order_id",
+        ["type"] = "string",
+        ["description"] = "订单ID"
+      },
+      3 = {
+        ["name"] = "amount",
+        ["type"] = "double",
+        ["description"] = "支付金额"
+      },
+      4 = {
+        ["name"] = "payment_method",
+        ["type"] = "string",
+        ["description"] = "支付方式"
+      },
+      5 = {
+        ["name"] = "status",
+        ["type"] = "string",
+        ["description"] = "支付状态"
+      },
+      6 = {
+        ["name"] = "fee",
+        ["type"] = "double",
+        ["description"] = "手续费"
+      }
+    }
+  },
+  ["sms"] = {
+    ["block_size"] = 60,
+    ["name"] = "短信下发",
+    ["indexes"] = {
+      1 = "timestamp",
+      2 = "sms_id",
+      3 = "phone"
+    },
+    ["description"] = "短信发送、通知等业务数据",
+    ["retention_days"] = 30,
+    ["compression"] = "lz4",
+    ["fields"] = {
+      1 = {
+        ["name"] = "sms_id",
+        ["type"] = "string",
+        ["description"] = "短信ID"
+      },
+      2 = {
+        ["name"] = "phone",
+        ["type"] = "string",
+        ["description"] = "手机号"
+      },
+      3 = {
+        ["name"] = "content",
+        ["type"] = "string",
+        ["description"] = "短信内容"
+      },
+      4 = {
+        ["name"] = "status",
+        ["type"] = "string",
+        ["description"] = "发送状态"
+      },
+      5 = {
+        ["name"] = "provider",
+        ["type"] = "string",
+        ["description"] = "服务商"
+      }
+    }
+  },
+  ["stock_quotes"] = {
+    ["block_size"] = 30,
+    ["name"] = "金融行情",
+    ["indexes"] = {
+      1 = "timestamp",
+      2 = "symbol"
+    },
+    ["description"] = "股票、期货、外汇等金融行情数据",
+    ["retention_days"] = 180,
+    ["compression"] = "lz4",
+    ["fields"] = {
+      1 = {
+        ["name"] = "open",
+        ["type"] = "double",
+        ["description"] = "开盘价"
+      },
+      2 = {
+        ["name"] = "high",
+        ["type"] = "double",
+        ["description"] = "最高价"
+      },
+      3 = {
+        ["name"] = "low",
+        ["type"] = "double",
+        ["description"] = "最低价"
+      },
+      4 = {
+        ["name"] = "close",
+        ["type"] = "double",
+        ["description"] = "收盘价"
+      },
+      5 = {
+        ["name"] = "volume",
+        ["type"] = "int64",
+        ["description"] = "成交量"
+      },
+      6 = {
+        ["name"] = "amount",
+        ["type"] = "double",
+        ["description"] = "成交额"
+      }
+    }
+  },
+  ["orders"] = {
+    ["block_size"] = 60,
+    ["name"] = "订单数据",
+    ["indexes"] = {
+      1 = "timestamp",
+      2 = "order_id",
+      3 = "user_id"
+    },
+    ["description"] = "电商订单、交易订单等业务数据",
+    ["retention_days"] = 365,
+    ["compression"] = "lz4",
+    ["fields"] = {
+      1 = {
+        ["name"] = "order_id",
+        ["type"] = "string",
+        ["description"] = "订单ID"
+      },
+      2 = {
+        ["name"] = "user_id",
+        ["type"] = "string",
+        ["description"] = "用户ID"
+      },
+      3 = {
+        ["name"] = "amount",
+        ["type"] = "double",
+        ["description"] = "订单金额"
+      },
+      4 = {
+        ["name"] = "status",
+        ["type"] = "string",
+        ["description"] = "订单状态"
+      },
+      5 = {
+        ["name"] = "product_count",
+        ["type"] = "int32",
+        ["description"] = "商品数量"
+      }
+    }
+  },
+  ["inventory"] = {
+    ["block_size"] = 300,
+    ["name"] = "库存数据",
+    ["indexes"] = {
+      1 = "timestamp",
+      2 = "sku_id",
+      3 = "warehouse"
+    },
+    ["description"] = "商品库存、仓储等业务数据",
+    ["retention_days"] = 90,
+    ["compression"] = "lz4",
+    ["fields"] = {
+      1 = {
+        ["name"] = "sku_id",
+        ["type"] = "string",
+        ["description"] = "商品SKU"
+      },
+      2 = {
+        ["name"] = "quantity",
+        ["type"] = "int32",
+        ["description"] = "库存数量"
+      },
+      3 = {
+        ["name"] = "reserved",
+        ["type"] = "int32",
+        ["description"] = "预留数量"
+      },
+      4 = {
+        ["name"] = "available",
+        ["type"] = "int32",
+        ["description"] = "可用数量"
+      },
+      5 = {
+        ["name"] = "warehouse",
+        ["type"] = "string",
+        ["description"] = "仓库"
+      }
+    }
+  }
+}

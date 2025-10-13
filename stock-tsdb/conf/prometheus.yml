@@ -1,0 +1,38 @@
+# Prometheus 配置文件
+# Stock-TSDB 监控配置
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# 告警规则配置
+rule_files:
+  # - "alert_rules.yml"
+
+# 告警管理器配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# 抓取配置
+scrape_configs:
+  # Stock-TSDB 应用指标
+  - job_name: 'stock-tsdb'
+    static_configs:
+      - targets: ['stock-tsdb:8080']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    
+  # 系统指标 (通过node_exporter)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s

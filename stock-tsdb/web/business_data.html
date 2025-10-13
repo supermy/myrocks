@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>业务数据查询 - Stock-TSDB</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <style>
+        .sql-editor-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .sql-editor {
+            width: 100%;
+            min-height: 120px;
+            padding: 1rem;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            line-height: 1.5;
+            resize: vertical;
+        }
+        
+        .sql-editor:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        
+        .query-controls {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .query-examples {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .query-examples h4 {
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+        }
+        
+        .example-query {
+            display: inline-block;
+            background: #e8f4fd;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            margin: 0.25rem;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        
+        .example-query:hover {
+            background: #d1ecf1;
+            transform: translateY(-1px);
+        }
+        
+        .results-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .results-info {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .results-table th,
+        .results-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .results-table th {
+            background: #34495e;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .results-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .aggregation-results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .agg-result {
+            background: #e8f4fd;
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .agg-result h4 {
+            margin: 0 0 0.5rem 0;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+        
+        .agg-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #3498db;
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-top: 2rem;
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 4px solid #dc3545;
+            margin-top: 1rem;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .export-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>业务数据查询系统</h1>
+            <nav>
+                <a href="#query" class="active">SQL查询</a>
+                <a href="#tables">表结构</a>
+                <a href="#history">查询历史</a>
+                <a href="/">返回主系统</a>
+            </nav>
+        </header>
+        
+        <main>
+            <!-- SQL查询界面 -->
+            <section id="query" class="active">
+                <h2>SQL查询编辑器</h2>
+                
+                <div class="sql-editor-container">
+                    <textarea 
+                        id="sql-editor" 
+                        class="sql-editor" 
+                        placeholder="请输入SQL查询语句，例如：SELECT * FROM stock_quotes WHERE price > 10"
+                    ></textarea>
+                    
+                    <div class="query-controls">
+                        <button id="execute-query" class="btn btn-primary">执行查询</button>
+                        <button id="clear-query" class="btn btn-secondary">清空</button>
+                        <span id="query-status" class="results-info"></span>
+                    </div>
+                    
+                    <div class="query-examples">
+                        <h4>查询示例：</h4>
+                        <div class="example-query" onclick="document.getElementById('sql-editor').value = this.textContent">
+                            SELECT * FROM stock_quotes
+                        </div>
+                        <div class="example-query" onclick="document.getElementById('sql-editor').value = this.textContent">
+                            SELECT symbol, price FROM stock_quotes WHERE price > 10
+                        </div>
+                        <div class="example-query" onclick="document.getElementById('sql-editor').value = this.textContent">
+                            SELECT symbol, AVG(price) as avg_price FROM stock_quotes GROUP BY symbol
+                        </div>
+                        <div class="example-query" onclick="document.getElementById('sql-editor').value = this.textContent">
+                            SELECT COUNT(*) as total_records FROM stock_quotes
+                        </div>
+                        <div class="example-query" onclick="document.getElementById('sql-editor').value = this.textContent">
+                            SELECT symbol, MAX(price) as max_price FROM stock_quotes GROUP BY symbol
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="results-container" class="results-container" style="display: none;">
+                    <div class="results-header">
+                        <h3>查询结果</h3>
+                        <div class="results-info">
+                            <span id="result-info"></span>
+                            <div class="export-controls">
+                                <button id="export-csv" class="btn btn-small btn-secondary">导出CSV</button>
+                                <button id="export-json" class="btn btn-small btn-secondary">导出JSON</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="aggregation-results" class="aggregation-results"></div>
+                    
+                    <div id="results-table-container">
+                        <table id="results-table" class="results-table"></table>
+                    </div>
+                    
+                    <div id="chart-container" class="chart-container"></div>
+                </div>
+                
+                <div id="error-container" class="error-message" style="display: none;"></div>
+            </section>
+            
+            <!-- 表结构界面 -->
+            <section id="tables">
+                <h2>数据表结构</h2>
+                <div id="tables-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        加载表结构信息...
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 查询历史界面 -->
+            <section id="history">
+                <h2>查询历史</h2>
+                <div id="history-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        加载查询历史...
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <script src="static/js/app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        class BusinessDataQuery {
+            constructor() {
+                this.apiBase = window.location.origin;
+                this.currentSection = 'query';
+                this.queryHistory = JSON.parse(localStorage.getItem('business_query_history') || '[]');
+                this.init();
+            }
+            
+            init() {
+                this.bindEvents();
+                this.loadTableStructure();
+                this.loadQueryHistory();
+            }
+            
+            bindEvents() {
+                // 导航菜单点击事件
+                document.querySelectorAll('nav a').forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const target = e.target.getAttribute('href').substring(1);
+                        this.switchSection(target);
+                    });
+                });
+                
+                // 查询执行事件
+                document.getElementById('execute-query').addEventListener('click', () => {
+                    this.executeQuery();
+                });
+                
+                // 清空查询事件
+                document.getElementById('clear-query').addEventListener('click', () => {
+                    document.getElementById('sql-editor').value = '';
+                    this.hideResults();
+                });
+                
+                // 导出事件
+                document.getElementById('export-csv').addEventListener('click', () => {
+                    this.exportToCSV();
+                });
+                
+                document.getElementById('export-json').addEventListener('click', () => {
+                    this.exportToJSON();
+                });
+                
+                // 键盘快捷键
+                document.getElementById('sql-editor').addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        e.preventDefault();
+                        this.executeQuery();
+                    }
+                });
+            }
+            
+            switchSection(section) {
+                // 更新导航激活状态
+                document.querySelectorAll('nav a').forEach(link => {
+                    link.classList.remove('active');
+                });
+                document.querySelector(`nav a[href="#${section}"]`).classList.add('active');
+                
+                // 切换内容区域
+                document.querySelectorAll('main section').forEach(sectionEl => {
+                    sectionEl.style.display = 'none';
+                });
+                document.getElementById(section).style.display = 'block';
+                
+                this.currentSection = section;
+            }
+            
+            async executeQuery() {
+                const sql = document.getElementById('sql-editor').value.trim();
+                if (!sql) {
+                    this.showError('请输入SQL查询语句');
+                    return;
+                }
+                
+                this.showLoading('正在执行查询...');
+                this.hideResults();
+                this.hideError();
+                
+                try {
+                    const response = await fetch(`${this.apiBase}/business/query`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ sql: sql })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        this.displayResults(result);
+                        this.addToHistory(sql, result);
+                    } else {
+                        throw new Error(result.error || '查询执行失败');
+                    }
+                    
+                } catch (error) {
+                    this.showError(`查询执行失败: ${error.message}`);
+                }
+                
+                this.hideLoading();
+            }
+            
+            displayResults(result) {
+                const container = document.getElementById('results-container');
+                const info = document.getElementById('result-info');
+                const tableContainer = document.getElementById('results-table-container');
+                const aggContainer = document.getElementById('aggregation-results');
+                const chartContainer = document.getElementById('chart-container');
+                
+                // 更新结果信息
+                info.textContent = `返回 ${result.row_count} 条记录，执行时间: ${result.execution_time.toFixed(3)} 秒`;
+                
+                // 清空容器
+                aggContainer.innerHTML = '';
+                chartContainer.innerHTML = '';
+                
+                // 检查是否为聚合查询
+                const isAggregation = this.isAggregationQuery(result);
+                
+                if (isAggregation) {
+                    this.displayAggregationResults(result, aggContainer);
+                }
+                
+                // 显示数据表格
+                this.displayDataTable(result, tableContainer);
+                
+                // 显示图表（如果数据适合）
+                if (result.rows && result.rows.length > 0) {
+                    this.displayChart(result, chartContainer);
+                }
+                
+                container.style.display = 'block';
+            }
+            
+            isAggregationQuery(result) {
+                if (!result.rows || result.rows.length === 0) return false;
+                
+                const firstRow = result.rows[0];
+                const keys = Object.keys(firstRow);
+                
+                // 检查是否包含聚合函数结果
+                const aggregationIndicators = ['count', 'sum', 'avg', 'min', 'max', 'total'];
+                return keys.some(key => 
+                    aggregationIndicators.some(indicator => 
+                        key.toLowerCase().includes(indicator)
+                    )
+                );
+            }
+            
+            displayAggregationResults(result, container) {
+                if (!result.rows || result.rows.length === 0) return;
+                
+                const firstRow = result.rows[0];
+                Object.keys(firstRow).forEach(key => {
+                    const value = firstRow[key];
+                    const aggCard = document.createElement('div');
+                    aggCard.className = 'agg-result';
+                    aggCard.innerHTML = `
+                        <h4>${key}</h4>
+                        <div class="agg-value">${value}</div>
+                    `;
+                    container.appendChild(aggCard);
+                });
+            }
+            
+            displayDataTable(result, container) {
+                const table = document.getElementById('results-table');
+                table.innerHTML = '';
+                
+                if (!result.rows || result.rows.length === 0) {
+                    table.innerHTML = '<tr><td colspan="100">无数据</td></tr>';
+                    return;
+                }
+                
+                // 创建表头
+                const headers = Object.keys(result.rows[0]);
+                const headerRow = document.createElement('tr');
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                table.appendChild(headerRow);
+                
+                // 创建数据行
+                result.rows.forEach(row => {
+                    const dataRow = document.createElement('tr');
+                    headers.forEach(header => {
+                        const td = document.createElement('td');
+                        td.textContent = row[header] !== null && row[header] !== undefined ? row[header] : 'NULL';
+                        dataRow.appendChild(td);
+                    });
+                    table.appendChild(dataRow);
+                });
+            }
+            
+            displayChart(result, container) {
+                if (!result.rows || result.rows.length === 0) return;
+                
+                const canvas = document.createElement('canvas');
+                container.appendChild(canvas);
+                
+                const headers = Object.keys(result.rows[0]);
+                
+                // 简单的图表逻辑 - 可以根据实际需求扩展
+                if (headers.length >= 2 && result.rows.length > 1) {
+                    const labels = result.rows.map(row => row[headers[0]]);
+                    const data = result.rows.map(row => {
+                        const value = row[headers[1]];
+                        return typeof value === 'number' ? value : 0;
+                    });
+                    
+                    new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: headers[1],
+                                data: data,
+                                borderColor: '#3498db',
+                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    });
+                }
+            }
+            
+            hideResults() {
+                document.getElementById('results-container').style.display = 'none';
+            }
+            
+            showError(message) {
+                const container = document.getElementById('error-container');
+                container.textContent = message;
+                container.style.display = 'block';
+            }
+            
+            hideError() {
+                document.getElementById('error-container').style.display = 'none';
+            }
+            
+            showLoading(message) {
+                document.getElementById('query-status').textContent = message;
+            }
+            
+            hideLoading() {
+                document.getElementById('query-status').textContent = '';
+            }
+            
+            addToHistory(sql, result) {
+                this.queryHistory.unshift({
+                    sql: sql,
+                    timestamp: new Date().toISOString(),
+                    rowCount: result.row_count,
+                    executionTime: result.execution_time
+                });
+                
+                // 只保留最近50条记录
+                this.queryHistory = this.queryHistory.slice(0, 50);
+                localStorage.setItem('business_query_history', JSON.stringify(this.queryHistory));
+                
+                this.loadQueryHistory();
+            }
+            
+            async loadTableStructure() {
+                try {
+                    const response = await fetch(`${this.apiBase}/business/tables`);
+                    if (response.ok) {
+                        const tables = await response.json();
+                        this.displayTableStructure(tables);
+                    }
+                } catch (error) {
+                    console.error('加载表结构失败:', error);
+                }
+            }
+            
+            displayTableStructure(tables) {
+                const container = document.getElementById('tables-container');
+                
+                if (!tables || tables.length === 0) {
+                    container.innerHTML = '<p>暂无表结构信息</p>';
+                    return;
+                }
+                
+                let html = '<div class="tables-list">';
+                
+                tables.forEach(table => {
+                    html += `
+                        <div class="table-info" style="margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3>表名: ${table.name}</h3>
+                            <p>描述: ${table.description || '暂无描述'}</p>
+                            <h4>字段结构:</h4>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>字段名</th>
+                                        <th>类型</th>
+                                        <th>说明</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    if (table.columns && table.columns.length > 0) {
+                        table.columns.forEach(column => {
+                            html += `
+                                <tr>
+                                    <td><code>${column.name}</code></td>
+                                    <td>${column.type}</td>
+                                    <td>${column.description || ''}</td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        html += '<tr><td colspan="3">暂无字段信息</td></tr>';
+                    }
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            loadQueryHistory() {
+                const container = document.getElementById('history-container');
+                
+                if (this.queryHistory.length === 0) {
+                    container.innerHTML = '<p>暂无查询历史</p>';
+                    return;
+                }
+                
+                let html = '<div class="history-list">';
+                
+                this.queryHistory.forEach((item, index) => {
+                    html += `
+                        <div class="history-item" style="margin-bottom: 1rem; padding: 1rem; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                <strong>查询 ${index + 1}</strong>
+                                <span style="color: #7f8c8d; font-size: 0.9rem;">
+                                    ${new Date(item.timestamp).toLocaleString()}
+                                </span>
+                            </div>
+                            <div style="font-family: 'Courier New', monospace; background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem;">
+                                ${item.sql}
+                            </div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem;">
+                                返回 ${item.rowCount} 条记录，执行时间: ${item.executionTime.toFixed(3)} 秒
+                            </div>
+                            <button onclick="businessQuery.reuseQuery('${item.sql.replace(/'/g, "\\'")}')" class="btn btn-small btn-primary" style="margin-top: 0.5rem;">复用查询</button>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            reuseQuery(sql) {
+                document.getElementById('sql-editor').value = sql;
+                this.switchSection('query');
+            }
+            
+            exportToCSV() {
+                const table = document.getElementById('results-table');
+                if (!table.rows.length) return;
+                
+                let csv = '';
+                
+                // 添加表头
+                const headers = [];
+                Array.from(table.rows[0].cells).forEach(cell => {
+                    headers.push(cell.textContent);
+                });
+                csv += headers.join(',') + '\n';
+                
+                // 添加数据行
+                Array.from(table.rows).slice(1).forEach(row => {
+                    const rowData = [];
+                    Array.from(row.cells).forEach(cell => {
+                        rowData.push(`"${cell.textContent.replace(/"/g, '""')}"`);
+                    });
+                    csv += rowData.join(',') + '\n';
+                });
+                
+                this.downloadFile(csv, 'query_results.csv', 'text/csv');
+            }
+            
+            exportToJSON() {
+                const table = document.getElementById('results-table');
+                if (!table.rows.length) return;
+                
+                const headers = Array.from(table.rows[0].cells).map(cell => cell.textContent);
+                const data = Array.from(table.rows).slice(1).map(row => {
+                    const rowData = {};
+                    Array.from(row.cells).forEach((cell, index) => {
+                        rowData[headers[index]] = cell.textContent;
+                    });
+                    return rowData;
+                });
+                
+                const json = JSON.stringify(data, null, 2);
+                this.downloadFile(json, 'query_results.json', 'application/json');
+            }
+            
+            downloadFile(content, filename, contentType) {
+                const blob = new Blob([content], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        }
+        
+        // 初始化应用
+        const businessQuery = new BusinessDataQuery();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{"min_throughput":100000,"warmup_duration":1,"max_latency_p99":100,"test_duration":10,"symbols":["SH600519","SH600036","SH601318","SZ000001","SZ000002"],"data_points_per_request":5,"base_url":"http:\/\/localhost:8081","requests_per_thread":10,"concurrent_threads":1,"max_error_rate":0.01}

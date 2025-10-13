@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>登录测试</title>
+</head>
+<body>
+    <h1>登录测试</h1>
+    <button onclick="testLogin()">测试登录</button>
+    <button onclick="testCheckAuth()">测试认证检查</button>
+    <div id="result"></div>
+
+    <script>
+        async function testLogin() {
+            try {
+                console.log('开始登录测试...');
+                console.log('请求URL: http://localhost:8080/api/auth/login');
+                
+                const response = await fetch('http://localhost:8080/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Origin': 'http://localhost:8081'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+
+                console.log('登录响应状态:', response.status);
+                console.log('登录响应头:');
+                for (let [key, value] of response.headers.entries()) {
+                    console.log(`${key}: ${value}`);
+                }
+
+                const result = await response.json();
+                console.log('登录结果:', result);
+                
+                document.getElementById('result').innerHTML = 
+                    `<h3>登录结果:</h3><pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+            } catch (error) {
+                console.error('登录错误:', error);
+                document.getElementById('result').innerHTML = 
+                    `<h3>登录错误:</h3><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testCheckAuth() {
+            try {
+                console.log('开始认证检查...');
+                const response = await fetch('http://localhost:8080/api/auth/check', {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'include'
+                });
+
+                console.log('认证检查响应状态:', response.status);
+                const result = await response.json();
+                console.log('认证检查结果:', result);
+                
+                document.getElementById('result').innerHTML = 
+                    `<h3>认证检查结果:</h3><pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+            } catch (error) {
+                console.error('认证检查错误:', error);
+                document.getElementById('result').innerHTML = 
+                    `<h3>认证检查错误:</h3><pre>${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>

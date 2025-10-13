@@ -1,0 +1,201 @@
+{
+    "business_instances": {
+        "stock_quotes": {
+            "instance_id": "stock_quotes_instance",
+            "port": 6380,
+            "data_dir": "./data/stock_quotes",
+            "compression": "lz4",
+            "max_connections": 100,
+            "description": "股票行情数据实例 - 处理实时股票报价和交易数据",
+            "business_type": "stock_quotes",
+            "key_prefix": "stock:",
+            "performance_config": {
+                "write_buffer_size": "64MB",
+                "max_write_buffer_number": 4,
+                "target_file_size_base": "64MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": true,
+                "hot_data_days": 7,
+                "compression": "lz4",
+                "migration_threshold": "1GB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "6h",
+                "retention_days": 30
+            }
+        },
+        "iot_data": {
+            "instance_id": "iot_instance",
+            "port": 6381,
+            "data_dir": "./data/iot_data",
+            "compression": "snappy",
+            "max_connections": 200,
+            "description": "物联网数据实例 - 处理传感器和设备数据",
+            "business_type": "iot_data",
+            "key_prefix": "iot:",
+            "performance_config": {
+                "write_buffer_size": "32MB",
+                "max_write_buffer_number": 8,
+                "target_file_size_base": "32MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": true,
+                "hot_data_days": 3,
+                "compression": "snappy",
+                "migration_threshold": "500MB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "12h",
+                "retention_days": 90
+            }
+        },
+        "financial_quotes": {
+            "instance_id": "financial_quotes_instance",
+            "port": 6382,
+            "data_dir": "./data/financial_quotes",
+            "compression": "lz4",
+            "max_connections": 150,
+            "description": "金融行情数据实例 - 处理外汇、期货等金融衍生品数据",
+            "business_type": "financial_quotes",
+            "key_prefix": "financial:",
+            "performance_config": {
+                "write_buffer_size": "128MB",
+                "max_write_buffer_number": 6,
+                "target_file_size_base": "128MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": true,
+                "hot_data_days": 5,
+                "compression": "lz4",
+                "migration_threshold": "2GB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "4h",
+                "retention_days": 60
+            }
+        },
+        "orders": {
+            "instance_id": "orders_instance",
+            "port": 6383,
+            "data_dir": "./data/orders",
+            "compression": "zstd",
+            "max_connections": 50,
+            "description": "订单数据实例 - 处理电商订单和交易记录",
+            "business_type": "orders",
+            "key_prefix": "order:",
+            "performance_config": {
+                "write_buffer_size": "16MB",
+                "max_write_buffer_number": 2,
+                "target_file_size_base": "16MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": false,
+                "hot_data_days": 30,
+                "compression": "zstd",
+                "migration_threshold": "100MB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "24h",
+                "retention_days": 365
+            }
+        },
+        "payments": {
+            "instance_id": "payments_instance",
+            "port": 6384,
+            "data_dir": "./data/payments",
+            "compression": "zstd",
+            "max_connections": 50,
+            "description": "支付数据实例 - 处理支付交易和结算记录",
+            "business_type": "payments",
+            "key_prefix": "payment:",
+            "performance_config": {
+                "write_buffer_size": "16MB",
+                "max_write_buffer_number": 2,
+                "target_file_size_base": "16MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": false,
+                "hot_data_days": 90,
+                "compression": "zstd",
+                "migration_threshold": "100MB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "24h",
+                "retention_days": 730
+            }
+        },
+        "inventory": {
+            "instance_id": "inventory_instance",
+            "port": 6385,
+            "data_dir": "./data/inventory",
+            "compression": "snappy",
+            "max_connections": 30,
+            "description": "库存数据实例 - 处理商品库存和仓储管理",
+            "business_type": "inventory",
+            "key_prefix": "inventory:",
+            "performance_config": {
+                "write_buffer_size": "8MB",
+                "max_write_buffer_number": 1,
+                "target_file_size_base": "8MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": false,
+                "hot_data_days": 365,
+                "compression": "snappy",
+                "migration_threshold": "50MB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "48h",
+                "retention_days": 1095
+            }
+        },
+        "sms": {
+            "instance_id": "sms_instance",
+            "port": 6386,
+            "data_dir": "./data/sms",
+            "compression": "lz4",
+            "max_connections": 100,
+            "description": "短信下发数据实例 - 处理短信发送和状态记录",
+            "business_type": "sms",
+            "key_prefix": "sms:",
+            "performance_config": {
+                "write_buffer_size": "32MB",
+                "max_write_buffer_number": 4,
+                "target_file_size_base": "32MB"
+            },
+            "cold_hot_config": {
+                "enable_separation": true,
+                "hot_data_days": 1,
+                "compression": "lz4",
+                "migration_threshold": "200MB"
+            },
+            "backup_config": {
+                "enable_backup": true,
+                "backup_interval": "8h",
+                "retention_days": 180
+            }
+        }
+    },
+    "global_config": {
+        "version": "1.0.0",
+        "description": "业务实例分离配置 - 实现不同业务数据的独立实例管理",
+        "created_time": "2024-01-15",
+        "monitoring": {
+            "enable_metrics": true,
+            "metrics_port": 9090,
+            "health_check_interval": "30s"
+        },
+        "logging": {
+            "level": "info",
+            "file": "./logs/business_instances.log",
+            "max_size": "100MB"
+        }
+    }
+}

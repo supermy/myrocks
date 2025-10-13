@@ -1,0 +1,114 @@
+# 编译输出目录
+bin/
+obj/
+lib/
+build/
+
+# 日志文件
+logs/
+*.log
+log/
+
+# 数据文件
+data/
+db/
+*.db
+*.sst
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE文件
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# 配置文件（本地配置）
+*.conf.local
+*.config.local
+local.conf
+
+# 核心转储文件
+core
+core.*
+*.core
+
+# 调试文件
+*.dSYM/
+*.pdb
+debug_*.lua
+test_*_db/
+test_*db/
+
+# 依赖文件
+.deps/
+.depend
+
+# 包管理文件
+node_modules/
+package-lock.json
+
+# 文档生成文件
+docs/_build/
+docs/html/
+docs/latex/
+
+# 测试输出
+test-results/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# 备份文件
+*.bak
+*.backup
+*.old
+
+# 证书文件
+*.pem
+*.key
+*.crt
+*.csr
+
+# 进程ID文件
+*.pid
+
+# 锁文件
+*.lock
+
+# CMake文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+
+# 自动生成的文件
+version.h
+config.h
+
+# 系统文件
+.DS_Store?
+ehthumbs.db
+Icon?
+[Tt]humbs.db
+
+# 编辑器临时文件
+*.orig
+*.rej
+
+# 其他
+*.tmp
+*.temp
+*.swp
+*.swo
+*~

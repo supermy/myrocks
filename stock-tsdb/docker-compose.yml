@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  stock-tsdb:
+    build: .
+    image: stock-tsdb:latest
+    container_name: stock-tsdb
+    ports:
+      - "6379:6379"    # Redis兼容API端口
+      - "5555:5555"    # ZeroMQ集群端口
+      - "8080:8080"    # 监控端口
+    volumes:
+      - stock-tsdb-data:/data
+      - stock-tsdb-logs:/logs
+      - ./conf:/config:ro
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    networks:
+      - stock-tsdb-network
+
+  # 可选的监控服务
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: stock-tsdb-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+    networks:
+      - stock-tsdb-network
+    depends_on:
+      - stock-tsdb
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: stock-tsdb-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: unless-stopped
+    networks:
+      - stock-tsdb-network
+    depends_on:
+      - prometheus
+
+volumes:
+  stock-tsdb-data:
+    name: stock-tsdb-data
+  stock-tsdb-logs:
+    name: stock-tsdb-logs
+  prometheus-data:
+    name: stock-tsdb-prometheus-data
+  grafana-data:
+    name: stock-tsdb-grafana-data
+
+networks:
+  stock-tsdb-network:
+    name: stock-tsdb-network
+    driver: bridge
