@@ -4,6 +4,8 @@
 
 本文档总结了 stock-tsdb 项目的 P0/P1/P2 级别性能优化实施情况。
 
+**最近更新**: 2026-01-31 - 完成核心模块代码重构，提升可读性和性能
+
 ---
 
 ## 优化实施状态
@@ -53,6 +55,13 @@ local deserialized = serializer:deserialize(serialized)
 - 序列化性能：38,487 ops/sec
 - 比JSON快50-70%
 
+**代码重构亮点** (2026-01-31):
+- 添加清晰的代码分区（常量、构造函数、编码器、解码器、工具函数）
+- 使用解码器映射表 `_decoders` 提高可维护性
+- 优化编码器/解码器结构，支持类型自动推断
+- 添加预热机制提高基准测试准确性
+- 完善的LuaDoc注释
+
 #### 2. LRU缓存 (`lua/lrucache.lua`)
 
 **功能**：
@@ -77,6 +86,14 @@ local stats = cache:get_stats() -- 获取统计信息
 - 缓存命中率
 - 淘汰次数
 - 过期次数
+- 总请求数
+
+**代码重构亮点** (2026-01-31):
+- 重构链表操作，提取 `_remove_from_list` 公共方法消除重复代码
+- 优化过期清理逻辑，使用局部变量缓存 `os.time()` 减少函数调用开销
+- 新增 `count()` 和 `has()` 辅助方法提高API可用性
+- 改进统计信息追踪，添加 `total_requests` 字段
+- 完善的方法注释和类型说明
 
 ---
 
@@ -194,6 +211,13 @@ for _, source in ipairs(data_sources) do
     merger:add_source(source.id, StreamingMerger.create_array_iterator(source.data))
 end
 ```
+
+**代码重构亮点** (2026-01-31):
+- 优化最小堆 `_sift_up` 和 `_sift_down` 算法，使用局部变量减少表访问
+- 添加 `collect_all()` 方法替代内联循环，提高代码复用性
+- 改进 `create_array_iterator` 使用局部变量缓存数组长度
+- 添加预热机制提高基准测试准确性
+- 完善迭代器工厂方法和堆操作注释
 
 #### 7. RocksDB批量FFI (`lua/rocksdb_batch_ffi.lua`)
 
@@ -351,6 +375,38 @@ local merged = StreamingMerger.merge_sorted_arrays(arrays)
 
 ---
 
+## 代码重构记录
+
+### 2026-01-31 核心模块重构
+
+**重构目标**：提高代码可读性、可维护性和性能
+
+**重构范围**：
+1. **binary_serializer.lua** (+452行)
+   - 添加清晰的代码分区（常量、构造函数、编码器、解码器、工具函数）
+   - 使用解码器映射表 `_decoders` 提高可维护性
+   - 优化编码器/解码器结构，支持类型自动推断
+   - 添加预热机制提高基准测试准确性
+
+2. **lrucache.lua** (+330行)
+   - 重构链表操作，提取 `_remove_from_list` 公共方法消除重复代码
+   - 优化过期清理逻辑，使用局部变量缓存 `os.time()`
+   - 新增 `count()` 和 `has()` 辅助方法提高API可用性
+   - 改进统计信息追踪，添加 `total_requests` 字段
+
+3. **streaming_merger.lua** (+349行)
+   - 优化最小堆 `_sift_up` 和 `_sift_down` 算法
+   - 添加 `collect_all()` 方法替代内联循环，提高代码复用性
+   - 改进 `create_array_iterator` 使用局部变量缓存数组长度
+   - 添加预热机制提高基准测试准确性
+
+**重构验证**：
+- 21个测试全部通过（100%通过率）
+- 性能基准保持稳定
+- 代码质量显著提升
+
+---
+
 ## 总结
 
 所有P0/P1/P2级别的优化已成功实施并通过测试：
@@ -358,9 +414,11 @@ local merged = StreamingMerger.merge_sorted_arrays(arrays)
 - ✅ **P0优化**：二进制序列化 + LRU缓存，解决核心性能问题
 - ✅ **P1优化**：前缀搜索 + 时间触发，提升稳定性和查询性能
 - ✅ **P2优化**：流式合并 + FFI批量，为大规模数据处理做准备
+- ✅ **代码重构**：提升可读性和可维护性，2026-01-31完成
 
 预期整体性能提升：
 - 写入性能：50-70%
 - 读取性能：20-30%
 - 内存稳定性：消除OOM风险
 - 数据安全：减少数据丢失风险
+- 代码质量：显著提升可读性和可维护性

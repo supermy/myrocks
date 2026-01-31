@@ -98,6 +98,172 @@ end
 
 ---
 
+## 核心优化组件
+
+### 二进制序列化器
+
+**文件**: `lua/binary_serializer.lua`
+
+**重构日期**: 2026-01-31
+
+#### 快速开始
+
+```lua
+local BinarySerializer = require("lua.binary_serializer")
+
+-- 创建序列化器实例
+local serializer = BinarySerializer:new()
+
+-- 序列化数据
+local data = {
+    value = 123.45,
+    tags = {host = "server1", region = "us-east"},
+    timestamp = os.time()
+}
+local serialized = serializer:serialize(data)
+
+-- 反序列化
+local deserialized = serializer:deserialize(serialized)
+```
+
+#### 支持的类型
+
+| 类型标记 | Lua类型 | 说明 |
+|---------|---------|------|
+| 0x00 | nil | 空值 |
+| 0x01 | boolean | true/false |
+| 0x02 | number (integer) | 变长整数编码 |
+| 0x03 | number (double) | 8字节浮点数 |
+| 0x04 | string | 长度前缀字符串 |
+| 0x05 | table | 哈希表 |
+| 0x06 | array | 数组 |
+
+#### 整数编码优化
+
+```lua
+-- 自动选择最优整数类型
+INT8:   -128 ~ 127          (1字节)
+INT16:  -32768 ~ 32767      (2字节)
+INT32:  -21亿 ~ 21亿        (4字节)
+INT64:  更大范围            (8字节)
+```
+
+#### 重构改进
+
+- **代码分区**: 清晰的常量、构造函数、编码器、解码器、工具函数分区
+- **解码器映射**: 使用 `_decoders` 表提高可维护性
+- **类型推断**: 自动选择最优整数编码
+- **预热机制**: 提高基准测试准确性
+
+---
+
+### LRU缓存
+
+**文件**: `lua/lrucache.lua`
+
+**重构日期**: 2026-01-31
+
+#### 快速开始
+
+```lua
+local LRUCache = require("lua.lrucache")
+
+-- 创建缓存实例
+local cache = LRUCache:new({
+    max_size = 100000,      -- 最大条目数
+    default_ttl = 300       -- 默认5分钟过期
+})
+
+-- 基本操作
+cache:set("key1", "value1")           -- 使用默认TTL
+cache:set("key2", "value2", 60)       -- 自定义60秒TTL
+
+local value = cache:get("key1")       -- 获取值
+local exists = cache:has("key1")      -- 检查存在
+local count = cache:count()           -- 获取条目数
+
+-- 删除操作
+cache:delete("key1")                  -- 删除单个
+cache:clear()                         -- 清空缓存
+```
+
+#### 统计信息
+
+```lua
+local stats = cache:get_stats()
+print(string.format("命中率: %.2f%%", stats.hit_rate * 100))
+print(string.format("总请求: %d", stats.total_requests))
+print(string.format("淘汰数: %d", stats.evictions))
+print(string.format("过期数: %d", stats.expirations))
+```
+
+#### 重构改进
+
+- **链表操作**: 提取 `_remove_from_list` 公共方法消除重复代码
+- **过期优化**: 使用局部变量缓存 `os.time()` 减少函数调用
+- **新增方法**: `count()` 和 `has()` 提高API可用性
+- **统计增强**: 添加 `total_requests` 字段完善追踪
+
+---
+
+### 流式合并器
+
+**文件**: `lua/streaming_merger.lua`
+
+**重构日期**: 2026-01-31
+
+#### 快速开始
+
+```lua
+local StreamingMerger = require("lua.streaming_merger")
+
+-- 创建合并器（带比较函数）
+local merger = StreamingMerger:new(function(a, b)
+    return a.timestamp < b.timestamp  -- 按时间戳升序
+end)
+
+-- 添加数据源
+local array1 = {{timestamp = 1, value = 10}, {timestamp = 3, value = 30}}
+local array2 = {{timestamp = 2, value = 20}, {timestamp = 4, value = 40}}
+
+merger:add_source("source1", StreamingMerger.create_array_iterator(array1))
+merger:add_source("source2", StreamingMerger.create_array_iterator(array2))
+
+-- 流式获取（内存友好）
+while true do
+    local item = merger:next()
+    if not item then break end
+    print(string.format("时间: %d, 值: %d", item.timestamp, item.value))
+end
+
+-- 或一次性收集
+local all_items = merger:collect_all()
+```
+
+#### 静态合并方法
+
+```lua
+-- 合并多个已排序数组
+local arrays = {
+    {{timestamp = 1}, {timestamp = 3}},
+    {{timestamp = 2}, {timestamp = 4}},
+    {{timestamp = 5}}
+}
+
+local merged = StreamingMerger.merge_sorted_arrays(arrays, function(a, b)
+    return a.timestamp < b.timestamp
+end)
+```
+
+#### 重构改进
+
+- **堆优化**: 优化 `_sift_up` 和 `_sift_down` 算法，使用局部变量减少表访问
+- **新增方法**: `collect_all()` 替代内联循环，提高代码复用性
+- **迭代器优化**: `create_array_iterator` 使用局部变量缓存数组长度
+- **预热机制**: 提高基准测试准确性
+
+---
+
 ## 负载均衡组件
 
 ### 智能负载均衡器
