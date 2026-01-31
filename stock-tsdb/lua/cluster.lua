@@ -243,7 +243,7 @@ function ClusterManager:create_socket(socket_type)
     
     -- 设置套接字选项
     local linger = ffi.new("int[1]", 1000)  -- 1秒超时
-    ffi.C.zmq_setsockopt(socket, 17, linger, ffi.sizeof("int"))  # ZMQ_LINGER
+    ffi.C.zmq_setsockopt(socket, 17, linger, ffi.sizeof("int"))  -- ZMQ_LINGER
     
     return socket
 end
@@ -346,7 +346,7 @@ function ClusterManager:receive_message(timeout_ms)
     
     -- 设置接收超时
     local timeout = ffi.new("int[1]", timeout_ms or 1000)
-    ffi.C.zmq_setsockopt(self.sockets.rep, 27, timeout, ffi.sizeof("int"))  # ZMQ_RCVTIMEO
+    ffi.C.zmq_setsockopt(self.sockets.rep, 27, timeout, ffi.sizeof("int"))  -- ZMQ_RCVTIMEO
     
     -- 接收消息
     local msg = ffi.new("zmq_msg_t")
@@ -358,7 +358,7 @@ function ClusterManager:receive_message(timeout_ms)
     rc = ffi.C.zmq_msg_recv(msg, self.sockets.rep, 0)
     if rc == -1 then
         local errno = ffi.C.zmq_errno()
-        if errno == 11 then  # EAGAIN
+        if errno == 11 then  -- EAGAIN
             ffi.C.zmq_msg_close(msg)
             return nil, "接收超时"
         end

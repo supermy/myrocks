@@ -67,12 +67,25 @@ function StockTsdbSystem:initialize()
     
     -- 2. 初始化日志系统
     success, result = pcall(function()
-        self.logger = logger.create_logger({
-            level = self.config:get_string("log.level", "INFO"),
-            file = self.config:get_string("log.file", "logs/stock-tsdb.log"),
-            max_size = self.config:get_int("log.max_size", 100) * 1024 * 1024,  -- MB
-            max_files = self.config:get_int("log.max_files", 10)
-        })
+        -- 获取日志级别配置
+        local log_level = self.config:get_string("log", "level", "INFO")
+        local log_file = self.config:get_string("log", "file", "logs/stock-tsdb.log")
+        
+        -- 创建日志目录
+        local log_dir = log_file:match("(.*)/")
+        if log_dir then
+            os.execute("mkdir -p " .. log_dir)
+        end
+        
+        -- 创建日志记录器
+        self.logger = logger.create("stock-tsdb", log_level)
+        
+        -- 启用文件日志
+        if log_file then
+            local log_dir = log_file:match("(.*)/") or "."
+            logger.enable_file(true, log_dir)
+        end
+        
         return self.logger
     end)
     
@@ -86,12 +99,12 @@ function StockTsdbSystem:initialize()
     -- 3. 初始化存储引擎
     success, result = pcall(function()
         self.storage_engine = storage.create_engine({
-            data_dir = self.config:get_string("storage.data_dir", "data"),
-            write_buffer_size = self.config:get_int("rocksdb.write_buffer_size", 64) * 1024 * 1024,  -- MB
-            max_write_buffer_number = self.config:get_int("rocksdb.max_write_buffer_number", 4),
-            target_file_size_base = self.config:get_int("rocksdb.target_file_size_base", 64) * 1024 * 1024,  -- MB
-            max_bytes_for_level_base = self.config:get_int("rocksdb.max_bytes_for_level_base", 256) * 1024 * 1024,  -- MB
-            compression = self.config:get_string("rocksdb.compression", "lz4")
+            data_dir = self.config:get_string("storage", "data_dir", "data"),
+            write_buffer_size = self.config:get_int("rocksdb", "write_buffer_size", 64) * 1024 * 1024,  -- MB
+            max_write_buffer_number = self.config:get_int("rocksdb", "max_write_buffer_number", 4),
+            target_file_size_base = self.config:get_int("rocksdb", "target_file_size_base", 64) * 1024 * 1024,  -- MB
+            max_bytes_for_level_base = self.config:get_int("rocksdb", "max_bytes_for_level_base", 256) * 1024 * 1024,  -- MB
+            compression = self.config:get_string("rocksdb", "compression", "lz4")
         })
         
         -- 初始化存储引擎
@@ -112,9 +125,9 @@ function StockTsdbSystem:initialize()
     success, result = pcall(function()
         self.tsdb_core = tsdb_core.create_tsdb({
             storage_engine = self.storage_engine,
-            block_size = self.config:get_int("storage.block_size", 4096),
-            compression = self.config:get_string("storage.compression", "lz4"),
-            cache_size = self.config:get_int("storage.cache_size", 256) * 1024 * 1024  -- MB
+            block_size = self.config:get_int("storage", "block_size", 4096),
+            compression = self.config:get_string("storage", "compression", "lz4"),
+            cache_size = self.config:get_int("storage", "cache_size", 256) * 1024 * 1024  -- MB
         })
         return self.tsdb_core
     end)
@@ -127,11 +140,11 @@ function StockTsdbSystem:initialize()
     -- 5. 初始化API服务器
     success, result = pcall(function()
         self.api_server = api_server.create_server({
-            host = self.config:get_string("api.host", "0.0.0.0"),
-            port = self.config:get_int("api.port", 8080),
-            ssl_enabled = self.config:get_bool("api.ssl_enabled", false),
-            ssl_cert = self.config:get_string("api.ssl_cert", ""),
-            ssl_key = self.config:get_string("api.ssl_key", ""),
+            host = self.config:get_string("api", "host", "0.0.0.0"),
+            port = self.config:get_int("api", "port", 8080),
+            ssl_enabled = self.config:get_bool("api", "ssl_enabled", false),
+            ssl_cert = self.config:get_string("api", "ssl_cert", ""),
+            ssl_key = self.config:get_string("api", "ssl_key", ""),
             tsdb_core = self.tsdb_core
         })
         return self.api_server
@@ -145,11 +158,11 @@ function StockTsdbSystem:initialize()
     -- 6. 初始化集群管理器
     success, result = pcall(function()
         self.cluster_manager = cluster_manager.create_manager({
-            cluster_name = self.config:get_string("cluster.name", "stock-tsdb-cluster"),
-            node_id = self.config:get_string("cluster.node_id", "node-1"),
-            seed_nodes = self.config:get_list("cluster.seed_nodes", {}),
-            gossip_port = self.config:get_int("cluster.gossip_port", 9090),
-            replication_factor = self.config:get_int("cluster.replication_factor", 3)
+            cluster_name = self.config:get_string("cluster", "name", "stock-tsdb-cluster"),
+            node_id = self.config:get_string("cluster", "node_id", "node-1"),
+            seed_nodes = self.config:get_list("cluster", "seed_nodes", {}),
+            gossip_port = self.config:get_int("cluster", "gossip_port", 9090),
+            replication_factor = self.config:get_int("cluster", "replication_factor", 3)
         })
         return self.cluster_manager
     end)
@@ -210,19 +223,23 @@ function StockTsdbSystem:start()
     end
     
     -- 启动集群管理器
-    if self.cluster_manager then
+    if self.cluster_manager and type(self.cluster_manager.start) == "function" then
         success, error = self.cluster_manager:start()
         if not success then
             self.logger:warn("启动集群管理器失败: " .. error)
         end
+    else
+        self.logger:warn("集群管理器不可用，跳过启动")
     end
     
     -- 启动监控器
-    if self.monitor then
+    if self.monitor and type(self.monitor.start) == "function" then
         success, error = self.monitor:start()
         if not success then
             self.logger:warn("启动监控器失败: " .. error)
         end
+    else
+        self.logger:warn("监控器不可用，跳过启动")
     end
     
     self.is_running = true

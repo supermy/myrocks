@@ -109,11 +109,14 @@ local function setup_signal_handlers()
     end
     
     -- 设置信号处理器（如果可用）
-    local signal = require "signal"
-    if signal then
+    local signal_available = pcall(require, "signal")
+    if signal_available then
+        local signal = require "signal"
         signal.signal("INT", sigint_handler)
         signal.signal("TERM", sigterm_handler)
         signal.signal("HUP", sighup_handler)
+    else
+        print("[StockTSDB] 信号处理模块不可用，使用基本信号处理")
     end
 end
 

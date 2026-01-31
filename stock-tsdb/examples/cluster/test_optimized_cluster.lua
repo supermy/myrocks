@@ -1,4 +1,4 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 
 -- 优化的TSDB集群测试脚本
 -- 测试集群优化功能的完整流程

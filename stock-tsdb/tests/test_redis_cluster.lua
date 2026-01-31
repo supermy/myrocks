@@ -1,4 +1,4 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 --
 -- Redis集群服务器测试脚本
 --

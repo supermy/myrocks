@@ -6,7 +6,7 @@ package.path = package.path .. ";./lua/?.lua"
 local ffi = require "ffi"
 
 -- 导入两个版本
-local TSDBStorageEngineV3 = require "tsdb_storage_engine_v3"
+local TSDBStorageEngineV3 = require "tsdb_storage_engine_v3_rocksdb"
 local TSDBStorageEngineIntegrated = require "lua/tsdb_storage_engine_integrated"
 
 local function create_test_data(stock_code, timestamp, base_price)

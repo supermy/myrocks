@@ -28,13 +28,26 @@ Logger.__index = Logger
 function Logger:new(name, level)
     local obj = setmetatable({}, Logger)
     obj.name = name or "unknown"
-    obj.level = level or logger.INFO
+    
+    -- 如果level是字符串，转换为数字级别
+    if type(level) == "string" then
+        local level_map = {
+            DEBUG = logger.DEBUG,
+            INFO = logger.INFO,
+            WARN = logger.WARN,
+            ERROR = logger.ERROR,
+            FATAL = logger.FATAL
+        }
+        obj.level = level_map[level:upper()] or logger.INFO
+    else
+        obj.level = level or logger.INFO
+    end
     obj.file_handle = nil
     obj.file_name = nil
     obj.max_size = 100 * 1024 * 1024  -- 100MB
     obj.max_files = 10
     obj.enable_console = true
-    obj.enable_file = false
+    obj.file_enabled = false  -- 重命名以避免与方法冲突
     return obj
 end
 
@@ -47,7 +60,7 @@ function Logger:set_console(enable)
 end
 
 function Logger:enable_file(enable, file_name)
-    self.enable_file = enable
+    self.file_enabled = enable
     if enable and file_name then
         self.file_name = file_name
         self:open_file()
@@ -94,6 +107,30 @@ function Logger:rotate_file()
 end
 
 function Logger:log(level, message, ...)
+    -- 如果level是字符串，转换为数字级别
+    if type(level) == "string" then
+        local level_map = {
+            DEBUG = logger.DEBUG,
+            INFO = logger.INFO,
+            WARN = logger.WARN,
+            ERROR = logger.ERROR,
+            FATAL = logger.FATAL
+        }
+        level = level_map[level:upper()] or logger.INFO
+    end
+    
+    -- 如果self.level是字符串，也转换为数字级别
+    if type(self.level) == "string" then
+        local level_map = {
+            DEBUG = logger.DEBUG,
+            INFO = logger.INFO,
+            WARN = logger.WARN,
+            ERROR = logger.ERROR,
+            FATAL = logger.FATAL
+        }
+        self.level = level_map[self.level:upper()] or logger.INFO
+    end
+    
     if level < self.level then
         return
     end
@@ -120,7 +157,7 @@ function Logger:log(level, message, ...)
     end
     
     -- 输出到文件
-    if self.enable_file and self.file_handle then
+    if self.file_enabled and self.file_handle then
         self.file_handle:write(log_line)
         self.file_handle:flush()
         self:rotate_file()
@@ -163,7 +200,7 @@ function LoggerManager:new()
     obj.loggers = {}
     obj.default_level = logger.INFO
     obj.enable_console = true
-    obj.enable_file = false
+    obj.file_enabled = false  -- 重命名以避免与方法冲突
     obj.log_dir = nil
     return obj
 end
@@ -172,7 +209,7 @@ function LoggerManager:create_logger(name, level)
     local logger_obj = Logger:new(name, level or self.default_level)
     logger_obj:set_console(self.enable_console)
     
-    if self.enable_file and self.log_dir then
+    if self.file_enabled and self.log_dir then
         local file_name = self.log_dir .. "/" .. name .. ".log"
         logger_obj:enable_file(true, file_name)
     end
@@ -203,7 +240,7 @@ function LoggerManager:enable_console(enable)
 end
 
 function LoggerManager:enable_file(enable, log_dir)
-    self.enable_file = enable
+    self.file_enabled = enable
     self.log_dir = log_dir
     
     if enable and log_dir then

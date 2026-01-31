@@ -1,765 +1,240 @@
-#!/usr/bin/env luajit
-
--- 配置管理器 - 基于RocksDB的配置元数据管理
--- 使用公共RocksDB FFI模块进行配置存储
-
--- 使用cjson库进行JSON序列化/反序列化
--- 使用本地lib目录中的cjson库
-package.cpath = package.cpath .. ";./lib/?.so"
-
--- 尝试加载cjson模块
-local json = nil
-local cjson_ok, cjson_module = pcall(require, "cjson")
-if cjson_ok then
-    json = cjson_module
-    print("[ConfigManager] 成功加载cjson库")
-else
-    -- 如果标准require失败，使用简单JSON实现
-    print("[ConfigManager] 警告: 无法加载cjson库，使用简单JSON实现")
-    json = {}
-    
-    -- 简单的JSON编码函数
-    function json.encode(data)
-        if type(data) == "table" then
-            local parts = {}
-            for k, v in pairs(data) do
-                if type(k) == "number" then
-                    table.insert(parts, json.encode(v))
-                else
-                    table.insert(parts, string.format('"%s":%s', k, json.encode(v)))
-                end
-            end
-            if #parts > 0 and next(data, next(data)) == nil then
-                return "[" .. table.concat(parts, ",") .. "]"
-            else
-                return "{" .. table.concat(parts, ",") .. "}"
-            end
-        elseif type(data) == "string" then
-            return '"' .. data:gsub('"', '\\"') .. '"'
-        elseif type(data) == "number" or type(data) == "boolean" then
-            return tostring(data)
-        else
-            return "null"
-        end
-    end
-    
-    -- 简单的JSON解码函数（仅支持基本类型）
-    function json.decode(str)
-        -- 移除空白字符
-        str = str:gsub("%s+", "")
-        
-        if str:sub(1,1) == "{" and str:sub(-1) == "}" then
-            local result = {}
-            local content = str:sub(2, -2)
-            local key, value
-            
-            -- 简单的键值对解析
-            for pair in content:gmatch("[^,}]+") do
-                local k, v = pair:match('"([^"]+)":(.+)')
-                if k and v then
-                    if v:sub(1,1) == '"' then
-                        result[k] = v:sub(2, -2)
-                    elseif v == "true" then
-                        result[k] = true
-                    elseif v == "false" then
-                        result[k] = false
-                    elseif tonumber(v) then
-                        result[k] = tonumber(v)
-                    end
-                end
-            end
-            return result
-        else
-            return nil
-        end
-    end
-end
-
--- 使用公共RocksDB FFI模块
-local RocksDBFFI = require "rocksdb_ffi"
+-- 配置管理器
+-- 用于管理RocksDB的配置参数，支持从文件加载、保存到文件等功能
 
 local ConfigManager = {}
 ConfigManager.__index = ConfigManager
 
--- 配置键前缀定义
-local CONFIG_PREFIXES = {
-    BUSINESS_CONFIG = "business:",      -- 业务配置
-    SYSTEM_CONFIG = "system:",         -- 系统配置
-    INSTANCE_CONFIG = "instance:",     -- 实例配置
-    ROUTING_CONFIG = "routing:",       -- 路由配置
-    METADATA_CONFIG = "metadata:",     -- 元数据配置
-}
-
-function ConfigManager:new(config_db_path)
+function ConfigManager:new()
     local obj = setmetatable({}, ConfigManager)
-    obj.config_db_path = config_db_path or "./data/config_db"
-    obj.is_initialized = false
-    obj.config_cache = {}  -- 内存缓存，存储所有配置
-    obj.config_versions = {}  -- 配置版本管理
-    
-    -- RocksDB相关属性
-    obj.db = nil
-    obj.options = nil
-    obj.read_options = nil
-    obj.write_options = nil
-    
+    obj.config = {}
     return obj
 end
 
--- 初始化配置数据库
-function ConfigManager:initialize()
-    if self.is_initialized then
-        return true, "Already initialized"
+-- 从文件加载配置
+function ConfigManager:load_from_file(file_path)
+    -- 检查文件是否存在
+    local file = io.open(file_path, "r")
+    if not file then
+        return false, "配置文件不存在: " .. file_path
     end
     
-    -- 创建RocksDB选项
-    self.options = RocksDBFFI.create_options()
-    RocksDBFFI.set_create_if_missing(self.options, true)
-    RocksDBFFI.set_compression(self.options, 4)  -- LZ4压缩
+    local content = file:read("*all")
+    file:close()
     
-    -- 打开数据库
-    local db, err = RocksDBFFI.open_database(self.options, self.config_db_path)
-    if not db then
-        return false, "Failed to open config database: " .. err
-    end
-    self.db = db
-    
-    -- 创建读写选项
-    self.read_options = RocksDBFFI.create_read_options()
-    self.write_options = RocksDBFFI.create_write_options()
-    
-    self.is_initialized = true
-    
-    -- 加载所有配置到内存缓存
-    self:load_all_configs()
-    
-    return true, "Config manager initialized successfully"
-end
-
--- 系统启动时一次性加载所有配置到内存
-function ConfigManager:load_all_configs()
-    print("[ConfigManager] 系统启动: 正在从RocksDB加载所有配置到内存...")
-    
-    -- 清空现有缓存
-    self.config_cache = {}
-    
-    -- 从RocksDB加载所有配置
-    local iterator = RocksDBFFI.create_iterator(self.db, self.read_options)
-    RocksDBFFI.iterator_seek_to_first(iterator)
-    
-    local loaded_count = 0
-    while RocksDBFFI.iterator_valid(iterator) do
-        local key = RocksDBFFI.iterator_key(iterator)
-        local value = RocksDBFFI.iterator_value(iterator)
-        
-        if key and value then
-            local config_value = json.decode(value)
-            if config_value then
-                self.config_cache[key] = config_value
-                loaded_count = loaded_count + 1
+    -- 使用pcall安全执行配置加载
+    local success, result = pcall(function()
+        -- 加载配置代码
+        local chunk = load(content)
+        if chunk then
+            local loaded_config = chunk()
+            if type(loaded_config) == "table" then
+                return loaded_config
+            else
+                -- 如果没有返回表，尝试直接解析内容
+                -- 创建一个环境表来存储变量
+                local env = {}
+                -- 修改加载字符串，使其将变量存储在env表中
+                local modified_content = "local config = {}\n" .. content .. "\nreturn config"
+                local modified_chunk = load(modified_content, nil, "t", {})
+                if modified_chunk then
+                    return modified_chunk()
+                end
             end
         end
-        
-        RocksDBFFI.iterator_next(iterator)
-    end
-    
-    -- 如果数据库为空，初始化默认配置
-    if loaded_count == 0 then
-        print("[ConfigManager] 数据库为空，正在初始化默认配置...")
-        self:initialize_default_configs()
-        loaded_count = self:get_config_count()
-    end
-    
-    print("[ConfigManager] 配置加载完成，共加载 " .. loaded_count .. " 个配置项")
-    return true
-end
-
-function ConfigManager:initialize_default_configs()
-    -- 业务配置
-    local business_configs = {
-        stock_quotes = {
-            name = "股票行情数据",
-            description = "股票实时行情数据存储",
-            block_size = 60,
-            retention_days = 30,
-            fields = {
-                {name = "timestamp", type = "int", description = "时间戳"},
-                {name = "stock_code", type = "string", description = "股票代码"},
-                {name = "price", type = "float", description = "价格"},
-                {name = "volume", type = "int", description = "成交量"}
-            },
-            compression = "lz4",
-            index_fields = {"timestamp", "stock_code"}
-        },
-        iot_data = {
-            name = "物联网数据",
-            description = "物联网设备传感器数据",
-            block_size = 300,
-            retention_days = 90,
-            fields = {
-                {name = "timestamp", type = "int", description = "时间戳"},
-                {name = "device_id", type = "string", description = "设备ID"},
-                {name = "sensor_type", type = "string", description = "传感器类型"},
-                {name = "value", type = "float", description = "传感器值"}
-            },
-            compression = "snappy",
-            index_fields = {"timestamp", "device_id"}
-        },
-        order_data = {
-            name = "订单数据",
-            description = "电商订单交易数据",
-            block_size = 3600,
-            retention_days = 180,
-            fields = {
-                {name = "timestamp", type = "int", description = "时间戳"},
-                {name = "order_id", type = "string", description = "订单ID"},
-                {name = "user_id", type = "string", description = "用户ID"},
-                {name = "amount", type = "float", description = "订单金额"},
-                {name = "status", type = "string", description = "订单状态"}
-            },
-            compression = "lz4",
-            index_fields = {"timestamp", "order_id"}
-        },
-        payment_data = {
-            name = "支付数据",
-            description = "支付交易流水数据",
-            block_size = 3600,
-            retention_days = 365,
-            fields = {
-                {name = "timestamp", type = "int", description = "时间戳"},
-                {name = "payment_id", type = "string", description = "支付ID"},
-                {name = "user_id", type = "string", description = "用户ID"},
-                {name = "amount", type = "float", description = "支付金额"},
-                {name = "channel", type = "string", description = "支付渠道"}
-            },
-            compression = "lz4",
-            index_fields = {"timestamp", "payment_id"}
-        }
-    }
-    
-    -- 将业务配置保存到缓存和数据库
-    for biz_type, config in pairs(business_configs) do
-        local key = CONFIG_PREFIXES.BUSINESS_CONFIG .. biz_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-    
-    -- 系统配置
-    local system_config = {
-        server = {
-            port = 6379,
-            bind = "0.0.0.0",
-            max_connections = 10000,
-            timeout = 300,
-            log_level = "info"
-        },
-        storage = {
-            data_dir = "./data",
-            write_buffer_size = 64 * 1024 * 1024,  -- 64MB
-            max_write_buffer_number = 4,
-            target_file_size_base = 64 * 1024 * 1024,  -- 64MB
-            max_bytes_for_level_base = 256 * 1024 * 1024,  -- 256MB
-            compression = 4  -- lz4
-        }
-    }
-    self.config_cache[CONFIG_PREFIXES.SYSTEM_CONFIG .. "main"] = system_config
-    self:save_to_db(CONFIG_PREFIXES.SYSTEM_CONFIG .. "main", system_config)
-    
-    -- 实例配置
-    local instance_configs = {
-        stock_quotes_instance = {
-            port = 6380,
-            data_dir = "./data/stock_quotes",
-            max_memory = "1GB",
-            persistence = "aof"
-        },
-        iot_data_instance = {
-            port = 6381,
-            data_dir = "./data/iot_data",
-            max_memory = "512MB",
-            persistence = "rdb"
-        },
-        order_data_instance = {
-            port = 6382,
-            data_dir = "./data/order_data",
-            max_memory = "2GB",
-            persistence = "aof"
-        },
-        payment_data_instance = {
-            port = 6383,
-            data_dir = "./data/payment_data",
-            max_memory = "1GB",
-            persistence = "aof"
-        }
-    }
-    
-    for instance_type, config in pairs(instance_configs) do
-        local key = CONFIG_PREFIXES.INSTANCE_CONFIG .. instance_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-    
-    -- 路由配置
-    local routing_config = {
-        stock = "stock_quotes",
-        iot = "iot_data",
-        order = "order_data",
-        payment = "payment_data"
-    }
-    self.config_cache[CONFIG_PREFIXES.ROUTING_CONFIG .. "main"] = routing_config
-    self:save_to_db(CONFIG_PREFIXES.ROUTING_CONFIG .. "main", routing_config)
-    
-    -- 元数据配置
-    local metadata_config = {
-        version = "1.0.0",
-        last_updated = os.time(),
-        config_count = self:get_config_count()
-    }
-    self.config_cache[CONFIG_PREFIXES.METADATA_CONFIG .. "main"] = metadata_config
-    self:save_to_db(CONFIG_PREFIXES.METADATA_CONFIG .. "main", metadata_config)
-end
-
--- 加载业务配置
-function ConfigManager:load_business_configs()
-    local business_configs = {
-        ["sms"] = {
-            name = "短信下发",
-            description = "短信发送记录、状态等",
-            block_size = 60,
-            retention_days = 30,
-            fields = {
-                {name = "sms_id", type = "string", description = "短信ID"},
-                {name = "phone", type = "string", description = "手机号"},
-                {name = "content", type = "string", description = "短信内容"},
-                {name = "status", type = "string", description = "发送状态"},
-                {name = "provider", type = "string", description = "服务商"},
-                {name = "cost", type = "double", description = "费用"},
-            },
-            compression = "lz4",
-            indexes = {"timestamp", "sms_id", "phone"},
-        },
-        ["orders"] = {
-            name = "订单数据",
-            description = "电商订单、交易订单等",
-            block_size = 300,
-            retention_days = 180,
-            fields = {
-                {name = "order_id", type = "string", description = "订单ID"},
-                {name = "user_id", type = "string", description = "用户ID"},
-                {name = "amount", type = "double", description = "订单金额"},
-                {name = "status", type = "string", description = "订单状态"},
-                {name = "product_count", type = "int32", description = "商品数量"},
-            },
-            compression = "zstd",
-            indexes = {"timestamp", "order_id", "user_id"},
-        },
-        ["stock_quotes"] = {
-            name = "金融行情",
-            description = "股票、期货、外汇等金融行情数据",
-            block_size = 30,
-            retention_days = 90,
-            fields = {
-                {name = "open", type = "double", description = "开盘价"},
-                {name = "high", type = "double", description = "最高价"},
-                {name = "low", type = "double", description = "最低价"},
-                {name = "close", type = "double", description = "收盘价"},
-                {name = "volume", type = "int64", description = "成交量"},
-                {name = "amount", type = "double", description = "成交额"},
-            },
-            compression = "lz4",
-            indexes = {"timestamp", "symbol"},
-        },
-        -- 其他业务配置...
-    }
-    
-    for biz_type, config in pairs(business_configs) do
-        local key = CONFIG_PREFIXES.BUSINESS_CONFIG .. biz_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-end
-
--- 加载系统配置
-function ConfigManager:load_system_configs()
-    local system_configs = {
-        ["server"] = {
-            port = 6379,
-            bind = "127.0.0.1",
-            max_connections = 1000,
-            use_event_driver = true,
-        },
-        ["storage"] = {
-            data_dir = "./data",
-            log_dir = "./logs",
-            block_size = 30,
-            compression_level = 6,
-            enable_compression = true,
-        },
-        ["performance"] = {
-            batch_size = 1000,
-            query_cache_size = 10000,
-            write_rate_limit = 0,
-            query_concurrency = 8,
-            enable_prefetch = true,
-        },
-        ["monitoring"] = {
-            enable_monitoring = true,
-            monitor_port = 8080,
-            monitor_retention = 24,
-            write_qps_threshold = 50000,
-            query_latency_threshold = 100,
-            error_rate_threshold = 0.01,
-        },
-    }
-    
-    for config_type, config in pairs(system_configs) do
-        local key = CONFIG_PREFIXES.SYSTEM_CONFIG .. config_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-end
-
--- 加载实例配置
-function ConfigManager:load_instance_configs()
-    local instance_configs = {
-        ["stock_quotes"] = {
-            port = 6380,
-            data_dir = "./data/stock",
-            compression = "lz4",
-            block_size = 30,
-            retention_days = 90,
-        },
-        ["iot_data"] = {
-            port = 6381,
-            data_dir = "./data/iot",
-            compression = "lz4",
-            block_size = 60,
-            retention_days = 30,
-        },
-        ["financial_quotes"] = {
-            port = 6382,
-            data_dir = "./data/finance",
-            compression = "zstd",
-            block_size = 30,
-            retention_days = 180,
-        },
-        ["order_data"] = {
-            port = 6383,
-            data_dir = "./data/orders",
-            compression = "zstd",
-            block_size = 300,
-            retention_days = 365,
-        },
-        ["payment_data"] = {
-            port = 6384,
-            data_dir = "./data/payments",
-            compression = "zstd",
-            block_size = 600,
-            retention_days = 365,
-        },
-        ["inventory_data"] = {
-            port = 6385,
-            data_dir = "./data/inventory",
-            compression = "lz4",
-            block_size = 60,
-            retention_days = 60,
-        },
-        ["sms_data"] = {
-            port = 6386,
-            data_dir = "./data/sms",
-            compression = "lz4",
-            block_size = 60,
-            retention_days = 30,
-        },
-    }
-    
-    for instance_type, config in pairs(instance_configs) do
-        local key = CONFIG_PREFIXES.INSTANCE_CONFIG .. instance_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-end
-
--- 加载路由配置
-function ConfigManager:load_routing_configs()
-    local routing_configs = {
-        ["business_patterns"] = {
-            ["stock:"] = "stock_quotes",
-            ["iot:"] = "iot_data",
-            ["finance:"] = "financial_quotes",
-            ["order:"] = "order_data",
-            ["payment:"] = "payment_data",
-            ["inventory:"] = "inventory_data",
-            ["sms:"] = "sms_data",
-        },
-        ["port_mapping"] = {
-            stock_quotes = 6380,
-            iot_data = 6381,
-            financial_quotes = 6382,
-            order_data = 6383,
-            payment_data = 6384,
-            inventory_data = 6385,
-            sms_data = 6386,
-        },
-    }
-    
-    for routing_type, config in pairs(routing_configs) do
-        local key = CONFIG_PREFIXES.ROUTING_CONFIG .. routing_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-end
-
--- 加载元数据配置
-function ConfigManager:load_metadata_configs()
-    local metadata_configs = {
-        ["version"] = {
-            config_schema_version = "1.0",
-            last_updated = os.date("%Y-%m-%d %H:%M:%S"),
-            created_by = "ConfigManager",
-        },
-        ["statistics"] = {
-            total_business_types = 7,
-            total_instances = 7,
-            config_items_count = 0, -- 动态计算
-        },
-    }
-    
-    for meta_type, config in pairs(metadata_configs) do
-        local key = CONFIG_PREFIXES.METADATA_CONFIG .. meta_type
-        self.config_cache[key] = config
-        self:save_to_db(key, config)
-    end
-end
-
--- 保存配置到RocksDB
-function ConfigManager:save_to_db(key, config)
-    if not self.is_initialized then
-        return false, "配置管理器未初始化"
-    end
-    
-    local config_json = json.encode(config)
-    local success, err = RocksDBFFI.put(self.db, self.write_options, key, config_json)
+        return nil
+    end)
     
     if not success then
-        return false, "配置保存失败: " .. err
+        return false, "加载配置失败: " .. result
     end
     
-    return true
+    if result then
+        self.config = result
+        return true, "配置加载成功"
+    else
+        return false, "无法解析配置内容"
+    end
 end
 
--- 从RocksDB加载配置
-function ConfigManager:load_from_db(key)
-    if not self.is_initialized then
-        return nil, "配置管理器未初始化"
+-- 保存配置到文件
+function ConfigManager:save_to_file(file_path)
+    local file = io.open(file_path, "w")
+    if not file then
+        return false, "无法创建配置文件: " .. file_path
     end
     
-    local value, err = RocksDBFFI.get(self.db, self.read_options, key)
+    -- 写入配置头部注释
+    file:write("-- RocksDB 配置文件\n")
+    file:write("-- 自动生成，请勿手动修改\n\n")
     
-    if err then
-        return nil, "配置加载失败: " .. err
+    -- 写入配置参数
+    local lines = {}
+    for key, value in pairs(self.config) do
+        local line
+        if type(value) == "string" then
+            line = string.format("%s = '%s',", key, value)
+        elseif type(value) == "boolean" then
+            line = string.format("%s = %s,", key, tostring(value))
+        elseif type(value) == "number" then
+            line = string.format("%s = %s,", key, tostring(value))
+        elseif type(value) == "table" then
+            -- 简单的表序列化
+            line = string.format("%s = {}, -- 表配置", key)
+        else
+            line = string.format("%s = nil, -- 未知类型", key)
+        end
+        table.insert(lines, line)
     end
     
-    if value == nil then
-        return nil, "配置不存在: " .. key
-    end
+    -- 按字母顺序排序配置项
+    table.sort(lines)
     
-    return json.decode(value)
+    -- 写入排序后的配置
+    file:write(table.concat(lines, "\n"))
+    file:write("\n")
+    
+    file:close()
+    return true, "配置已保存到: " .. file_path
 end
 
--- 获取配置（优先从内存缓存）
-function ConfigManager:get_config(config_type, config_key)
-    -- 映射配置类型到前缀键
-    local prefix_map = {
-        business = CONFIG_PREFIXES.BUSINESS_CONFIG,
-        system = CONFIG_PREFIXES.SYSTEM_CONFIG,
-        instance = CONFIG_PREFIXES.INSTANCE_CONFIG,
-        routing = CONFIG_PREFIXES.ROUTING_CONFIG,
-        metadata = CONFIG_PREFIXES.METADATA_CONFIG
-    }
-    
-    local prefix = prefix_map[config_type]
-    if not prefix then
-        return nil, "不支持的配置类型: " .. config_type
-    end
-    
-    local full_key = prefix .. config_key
-    
-    -- 优先从内存缓存获取
-    if self.config_cache[full_key] then
-        return self.config_cache[full_key]
-    end
-    
-    -- 如果内存缓存中没有，尝试从RocksDB加载
-    local config, err = self:load_from_db(full_key)
-    if config then
-        self.config_cache[full_key] = config
-    end
-    
-    return config, err
+-- 设置配置参数
+function ConfigManager:set(key, value)
+    self.config[key] = value
 end
 
--- 更新配置
-function ConfigManager:update_config(config_type, config_key, new_config)
-    -- 映射配置类型到前缀键
-    local prefix_map = {
-        business = CONFIG_PREFIXES.BUSINESS_CONFIG,
-        system = CONFIG_PREFIXES.SYSTEM_CONFIG,
-        instance = CONFIG_PREFIXES.INSTANCE_CONFIG,
-        routing = CONFIG_PREFIXES.ROUTING_CONFIG,
-        metadata = CONFIG_PREFIXES.METADATA_CONFIG
-    }
-    
-    local prefix = prefix_map[config_type]
-    if not prefix then
-        return false, "不支持的配置类型: " .. config_type
-    end
-    
-    local full_key = prefix .. config_key
-    
-    -- 保存到数据库
-    local success, err = self:save_to_db(full_key, new_config)
-    if not success then
-        return false, err
-    end
-    
-    -- 更新内存缓存
-    self.config_cache[full_key] = new_config
-    
-    -- 记录配置版本
-    self.config_versions[full_key] = self.config_versions[full_key] or {}
-    table.insert(self.config_versions[full_key], {
-        timestamp = os.time(),
-        value = new_config
-    })
-    
-    return true
+-- 获取配置参数
+function ConfigManager:get(key, default)
+    return self.config[key] or default
 end
 
--- 获取所有业务配置
-function ConfigManager:get_all_business_configs()
-    local business_configs = {}
+-- 合并配置
+function ConfigManager:merge(other_config)
+    if type(other_config) ~= "table" then
+        return false, "参数必须是表类型"
+    end
     
-    for key, config in pairs(self.config_cache) do
-        if key:startswith(CONFIG_PREFIXES.BUSINESS_CONFIG) then
-            local biz_type = key:sub(#CONFIG_PREFIXES.BUSINESS_CONFIG + 1)
-            business_configs[biz_type] = config
+    for key, value in pairs(other_config) do
+        self.config[key] = value
+    end
+    
+    return true, "配置合并成功"
+end
+
+-- 获取所有配置
+function ConfigManager:get_all()
+    -- 返回配置的副本，避免外部直接修改
+    local config_copy = {}
+    for key, value in pairs(self.config) do
+        if type(value) == "table" then
+            -- 对表进行深拷贝
+            config_copy[key] = {}
+            for k, v in pairs(value) do
+                config_copy[key][k] = v
+            end
+        else
+            config_copy[key] = value
         end
     end
-    
-    return business_configs
+    return config_copy
 end
 
--- 获取所有实例配置
-function ConfigManager:get_all_instance_configs()
-    local instance_configs = {}
-    
-    for key, config in pairs(self.config_cache) do
-        if key:startswith(CONFIG_PREFIXES.INSTANCE_CONFIG) then
-            local instance_type = key:sub(#CONFIG_PREFIXES.INSTANCE_CONFIG + 1)
-            instance_configs[instance_type] = config
-        end
-    end
-    
-    return instance_configs
+-- 重置配置
+function ConfigManager:reset()
+    self.config = {}
+    return true, "配置已重置"
 end
 
--- 获取路由配置
-function ConfigManager:get_routing_config()
-    return self:get_config("routing", "business_patterns")
-end
-
--- 获取端口映射
-function ConfigManager:get_port_mapping()
-    return self:get_config("routing", "port_mapping")
-end
-
--- 获取配置统计信息
-function ConfigManager:get_config_count()
-    local count = 0
-    for _ in pairs(self.config_cache) do
-        count = count + 1
-    end
-    return count
-end
-
--- 设置配置（Web界面使用）
-function ConfigManager:set_config(key, value)
-    if not self.is_initialized then
-        return false, "配置管理器未初始化"
-    end
-    
-    -- 如果value为nil，表示删除配置
-    if value == nil then
-        -- 从数据库删除
-        local success, err = RocksDBFFI.delete(self.db, self.write_options, key)
-        if not success then
-            return false, "配置删除失败: " .. err
-        end
-        
-        -- 从内存缓存删除
-        self.config_cache[key] = nil
-        
-        return true
-    end
-    
-    -- 保存配置到数据库
-    local config_json = json.encode(value)
-    local success, err = RocksDBFFI.put(self.db, self.write_options, key, config_json)
+-- 加载硬件检测模块
+function ConfigManager:load_hardware_detector()
+    -- 使用pcall安全加载硬件检测器
+    local success, err = pcall(function()
+        local HardwareDetector = require("hardware_detector")
+        return HardwareDetector
+    end)
     
     if not success then
-        return false, "配置保存失败: " .. err
-    end
-    
-    -- 更新内存缓存
-    self.config_cache[key] = value
-    
-    -- 记录配置版本
-    self.config_versions[key] = self.config_versions[key] or {}
-    table.insert(self.config_versions[key], {
-        timestamp = os.time(),
-        value = value
-    })
-    
-    return true
-end
-
--- 获取所有配置（Web界面使用）
-function ConfigManager:get_all_configs()
-    return self.config_cache
-end
-
--- 获取业务类型列表（Web界面使用）
-function ConfigManager:get_business_types()
-    local business_types = {}
-    
-    for key, config in pairs(self.config_cache) do
-        if key:startswith(CONFIG_PREFIXES.BUSINESS_CONFIG) then
-            local biz_type = key:sub(#CONFIG_PREFIXES.BUSINESS_CONFIG + 1)
-            table.insert(business_types, {
-                type = biz_type,
-                name = config.name or biz_type,
-                description = config.description or ""
-            })
+        -- 尝试使用简化版硬件检测器
+        local fallback_success, HardwareDetector = pcall(function()
+            return require("hardware_detector_simple")
+        end)
+        
+        if fallback_success then
+            return true, HardwareDetector
+        else
+            return false, "无法加载硬件检测器: " .. err
         end
     end
     
-    return business_types
+    return true, err  -- err此时是HardwareDetector
 end
 
--- 字符串startswith辅助函数
-function string.startswith(str, start)
-    return str:sub(1, #start) == start
-end
-
--- 关闭配置管理器
-function ConfigManager:close()
-    if self.db then
-        RocksDBFFI.close_database(self.db)
-        self.db = nil
+-- 生成优化配置
+function ConfigManager:generate_optimized_config(data_dir)
+    local success, detector_or_err = self:load_hardware_detector()
+    
+    if not success then
+        return false, detector_or_err
     end
-    self.is_initialized = false
-    print("[ConfigManager] 配置管理器已关闭")
+    
+    -- 创建硬件检测器实例
+    local detector = detector_or_err:new()
+    
+    -- 获取优化参数
+    local optimized_params = detector:get_optimized_rocksdb_params(data_dir)
+    
+    -- 合并到当前配置
+    return self:merge(optimized_params)
+end
+
+-- 打印配置摘要
+function ConfigManager:print_summary()
+    print("\n=== 配置摘要 ===")
+    
+    -- 按类别分组打印
+    local categories = {
+        basic = {"create_if_missing", "enable_statistics", "stats_dump_period_sec"},
+        memory = {"write_buffer_size", "max_write_buffer_number", "block_cache_size"},
+        io = {"target_file_size_base", "max_file_size", "bytes_per_sync"},
+        performance = {"max_background_compactions", "max_background_flushes"}
+    }
+    
+    for category, keys in pairs(categories) do
+        print(string.format("\n[%s]", category:upper()))
+        for _, key in ipairs(keys) do
+            if self.config[key] ~= nil then
+                local value = self.config[key]
+                if type(value) == "number" and value > 1024*1024*1024 then
+                    -- 转换为GB
+                    print(string.format("%s: %.2f GB", key, value/(1024*1024*1024)))
+                elseif type(value) == "number" and value > 1024*1024 then
+                    -- 转换为MB
+                    print(string.format("%s: %.2f MB", key, value/(1024*1024)))
+                elseif type(value) == "number" and value > 1024 then
+                    -- 转换为KB
+                    print(string.format("%s: %.2f KB", key, value/1024))
+                else
+                    print(string.format("%s: %s", key, tostring(value)))
+                end
+            end
+        end
+    end
+    
+    -- 打印其他配置项
+    print("\n[OTHER]")
+    local printed = {}
+    for _, keys in pairs(categories) do
+        for _, key in ipairs(keys) do
+            printed[key] = true
+        end
+    end
+    
+    for key, value in pairs(self.config) do
+        if not printed[key] then
+            print(string.format("%s: %s", key, tostring(value)))
+        end
+    end
+    
+    print("================\n")
 end
 
 return ConfigManager

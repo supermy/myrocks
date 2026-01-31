@@ -1,4 +1,4 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 --
 -- Redis集群服务器启动脚本
 -- 监听6379端口，集成ZeroMQ集群通信

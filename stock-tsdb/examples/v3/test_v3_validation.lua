@@ -3,7 +3,7 @@
 -- V3版本功能验证测试
 package.path = package.path .. ";./?.lua;./lua/?.lua"
 
-local V3StorageEngine = require("tsdb_storage_engine_v3")
+local V3StorageEngine = require("tsdb_storage_engine_v3_rocksdb")
 local TSDBStorageEngineIntegrated = require("lua.tsdb_storage_engine_integrated")
 
 print("=== V3版本功能验证测试 ===")

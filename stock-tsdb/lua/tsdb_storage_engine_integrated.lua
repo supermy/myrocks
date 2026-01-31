@@ -1,5 +1,6 @@
 --[[
     TSDB存储引擎集成版 - 整合V3存储引擎与集群功能
+    P2优化: 使用流式合并优化集群查询
     支持：
     - 一致性哈希分片
     - 30秒定长块 + 微秒列偏移
@@ -7,14 +8,17 @@
     - 冷热数据分离
     - ZeroMQ集群通信
     - Consul高可用
+    - 流式数据合并
 ]]
 
 local ffi = require "ffi"
 
 -- 导入我们新开发的模块
 local ConsistentHashCluster = require "../examples/cluster/consistent_hash_cluster"
--- 正确导入V3存储引擎（位于项目根目录）
-local TSDBStorageEngineV3 = require "../tsdb_storage_engine_v3"
+-- 导入RocksDB版本的V3存储引擎
+local TSDBStorageEngineV3 = require "lua.tsdb_storage_engine_v3_rocksdb"
+-- P2优化: 导入流式合并器
+local StreamingMerger = require "streaming_merger"
 
 -- 获取正确的集群管理器类
 local HighAvailabilityCluster = ConsistentHashCluster.HighAvailabilityCluster
@@ -214,6 +218,60 @@ function TSDBStorageEngineIntegrated:put_metric_data(metric_name, timestamp, val
     end
 end
 
+-- CSV数据导入接口
+function TSDBStorageEngineIntegrated:import_csv_data(file_path, business_type, options)
+    if not self.is_initialized then
+        return false, "存储引擎未初始化"
+    end
+    
+    -- CSV导入只在本地节点处理
+    if self.storage_engine then
+        return self.storage_engine:import_csv_data(file_path, business_type, options)
+    else
+        return false, "存储引擎不可用"
+    end
+end
+
+-- CSV数据导出接口
+function TSDBStorageEngineIntegrated:export_csv_data(file_path, business_type, start_time, end_time, options)
+    if not self.is_initialized then
+        return false, "存储引擎未初始化"
+    end
+    
+    -- CSV导出只在本地节点处理
+    if self.storage_engine then
+        return self.storage_engine:export_csv_data(file_path, business_type, start_time, end_time, options)
+    else
+        return false, "存储引擎不可用"
+    end
+end
+
+-- 获取支持的CSV格式列表
+function TSDBStorageEngineIntegrated:get_csv_formats()
+    if not self.is_initialized then
+        return false, "存储引擎未初始化"
+    end
+    
+    if self.storage_engine then
+        return self.storage_engine:get_csv_formats()
+    else
+        return false, "存储引擎不可用"
+    end
+end
+
+-- 验证CSV文件格式
+function TSDBStorageEngineIntegrated:validate_csv_format(file_path, business_type)
+    if not self.is_initialized then
+        return false, "存储引擎未初始化"
+    end
+    
+    if self.storage_engine then
+        return self.storage_engine:validate_csv_format(file_path, business_type)
+    else
+        return false, "存储引擎不可用"
+    end
+end
+
 function TSDBStorageEngineIntegrated:get_metric_data(metric_name, start_time, end_time, tags)
     -- 读取度量数据
     if not self.is_initialized then
@@ -223,18 +281,21 @@ function TSDBStorageEngineIntegrated:get_metric_data(metric_name, start_time, en
     -- 1. 确定数据可能分布在哪些节点
     local target_nodes = self:get_target_nodes_for_range(metric_name, start_time, end_time)
     
-    -- 2. 从本地节点读取数据
-    local local_data = {}
+    -- 2. 收集所有数据源
+    local data_sources = {}
+    
+    -- 本地数据源
     if self.storage_engine then
         local success, result = self.storage_engine:read_point(metric_name, start_time, end_time, tags)
-        if success then
-            for _, data_point in ipairs(result) do
-                table.insert(local_data, data_point)
-            end
+        if success and #result > 0 then
+            table.insert(data_sources, {
+                id = "local",
+                data = result
+            })
         end
     end
     
-    -- 3. 从远程节点读取数据（如果集群管理器可用）
+    -- 远程数据源
     if self.cluster_manager and #target_nodes > 0 then
         for _, node_id in ipairs(target_nodes) do
             if node_id ~= self.node_id then
@@ -246,21 +307,45 @@ function TSDBStorageEngineIntegrated:get_metric_data(metric_name, start_time, en
                     tags = tags
                 })
                 
-                if success and remote_data then
-                    for _, data_point in ipairs(remote_data) do
-                        table.insert(local_data, data_point)
-                    end
+                if success and remote_data and #remote_data > 0 then
+                    table.insert(data_sources, {
+                        id = node_id,
+                        data = remote_data
+                    })
                 end
             end
         end
     end
     
-    -- 4. 按时间排序数据
-    table.sort(local_data, function(a, b)
-        return a.timestamp < b.timestamp
-    end)
-    
-    return true, local_data
+    -- 3. P2优化: 使用流式合并器合并多个有序数据源
+    if #data_sources == 0 then
+        return true, {}
+    elseif #data_sources == 1 then
+        -- 只有一个数据源，直接返回
+        return true, data_sources[1].data
+    else
+        -- 多个数据源，使用流式合并
+        local merger = StreamingMerger:new(function(a, b)
+            return a.timestamp < b.timestamp
+        end)
+        
+        -- 添加所有数据源
+        for _, source in ipairs(data_sources) do
+            merger:add_source(source.id, StreamingMerger.create_array_iterator(source.data))
+        end
+        
+        -- 收集合并后的结果
+        local merged_data = {}
+        while true do
+            local item = merger:next()
+            if not item then
+                break
+            end
+            table.insert(merged_data, item)
+        end
+        
+        return true, merged_data
+    end
 end
 
 function TSDBStorageEngineIntegrated:get_target_node(key, timestamp)
@@ -346,6 +431,7 @@ function TSDBStorageEngineIntegrated:close()
     self.is_running = false
     
     print("[TSDB集成引擎] 已关闭")
+    return true
 end
 
 -- 辅助函数

@@ -13,7 +13,18 @@ local cjson = utils.safe_require_cjson()
 
 -- FFI定义系统调用
 ffi.cdef[[
-    // 时间相关
+    // 时间相关结构体
+    typedef struct {
+        long tv_sec;
+        long tv_usec;
+    } timeval;
+    
+    typedef struct {
+        long tv_sec;
+        long tv_nsec;
+    } timespec;
+    
+    // 时间相关函数
     int gettimeofday(struct timeval *tv, void *tz);
     int clock_gettime(int clk_id, struct timespec *tp);
     
@@ -84,6 +95,7 @@ ffi.cdef[[
     } proc_stat_t;
     
     // 文件操作
+    typedef struct _IO_FILE FILE;
     FILE *fopen(const char *path, const char *mode);
     size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
     int fclose(FILE *fp);

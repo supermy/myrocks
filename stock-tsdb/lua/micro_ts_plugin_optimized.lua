@@ -8,6 +8,14 @@ MicroTsPlugin.__index = MicroTsPlugin
 -- 加载FFI模块
 local ffi = require "ffi"
 
+-- 加载LuaJIT性能优化模块
+local LuajitOptimizer = nil
+if pcall(function() LuajitOptimizer = require "luajit_optimizer" end) then
+    print("[MicroTsPlugin] LuaJIT性能优化模块已加载")
+else
+    print("[MicroTsPlugin] 警告: LuaJIT性能优化模块不可用")
+end
+
 -- FFI定义micro_ts.so中的函数接口
 ffi.cdef[[
     /* 打包 Key + Qual */
@@ -96,6 +104,13 @@ function MicroTsPlugin:new()
     obj.version = "2.0.0"
     obj.description = "优化版高性能股票行情数据插件（FFI调用micro_ts.so）"
     
+    -- 初始化LuaJIT性能优化
+    if LuajitOptimizer then
+        LuajitOptimizer.initialize()
+        obj.luajit_optimizer = LuajitOptimizer
+        print("[MicroTsPlugin] LuaJIT性能优化已启用")
+    end
+    
     -- 加载micro_ts.so库
     local success, lib = pcall(ffi.load, "lib/micro_ts.so")
     if not success then
@@ -131,19 +146,29 @@ function MicroTsPlugin:new()
     obj.cache_size = 10000  -- 增加缓存大小
     obj.cache_access_order = {}  -- 记录缓存访问顺序
     
-    -- 预分配内存缓冲区 - 使用对象池减少内存分配
-    obj.buffer_pool = {
-        key_buffers = {},
-        qual_buffers = {},
-        value_buffers = {},
-        pool_size = 10
-    }
-    
-    -- 初始化缓冲池
-    for i = 1, obj.buffer_pool.pool_size do
-        table.insert(obj.buffer_pool.key_buffers, ffi.new("uint8_t[18]"))
-        table.insert(obj.buffer_pool.qual_buffers, ffi.new("uint8_t[6]"))
-        table.insert(obj.buffer_pool.value_buffers, ffi.new("uint8_t[50]"))
+    -- 预分配内存缓冲区 - 使用LuaJIT优化器的对象池
+    if obj.luajit_optimizer then
+        -- 使用优化器的对象池
+        obj.buffer_pool = {
+            key_buffers = obj.luajit_optimizer.buffer_pool,
+            qual_buffers = obj.luajit_optimizer.buffer_pool,
+            value_buffers = obj.luajit_optimizer.buffer_pool
+        }
+    else
+        -- 备用缓冲池
+        obj.buffer_pool = {
+            key_buffers = {},
+            qual_buffers = {},
+            value_buffers = {},
+            pool_size = 10
+        }
+        
+        -- 初始化缓冲池
+        for i = 1, obj.buffer_pool.pool_size do
+            table.insert(obj.buffer_pool.key_buffers, ffi.new("uint8_t[18]"))
+            table.insert(obj.buffer_pool.qual_buffers, ffi.new("uint8_t[6]"))
+            table.insert(obj.buffer_pool.value_buffers, ffi.new("uint8_t[50]"))
+        end
     end
     
     -- 性能监控
@@ -173,24 +198,36 @@ end
 
 -- 获取缓冲区（对象池模式）
 function MicroTsPlugin:get_buffer(buffer_type)
-    local buffers = self.buffer_pool[buffer_type]
-    if #buffers > 0 then
-        return table.remove(buffers)
+    if self.luajit_optimizer then
+        -- 使用LuaJIT优化器的对象池
+        return self.luajit_optimizer.buffer_pool:acquire()
     else
-        if buffer_type == "key_buffers" then
-            return ffi.new("uint8_t[18]")
-        elseif buffer_type == "qual_buffers" then
-            return ffi.new("uint8_t[6]")
-        elseif buffer_type == "value_buffers" then
-            return ffi.new("uint8_t[50]")
+        -- 备用缓冲池
+        local buffers = self.buffer_pool[buffer_type]
+        if #buffers > 0 then
+            return table.remove(buffers)
+        else
+            if buffer_type == "key_buffers" then
+                return ffi.new("uint8_t[18]")
+            elseif buffer_type == "qual_buffers" then
+                return ffi.new("uint8_t[6]")
+            elseif buffer_type == "value_buffers" then
+                return ffi.new("uint8_t[50]")
+            end
         end
     end
 end
 
 -- 归还缓冲区
 function MicroTsPlugin:return_buffer(buffer_type, buffer)
-    if #self.buffer_pool[buffer_type] < self.buffer_pool.pool_size then
-        table.insert(self.buffer_pool[buffer_type], buffer)
+    if self.luajit_optimizer then
+        -- 使用LuaJIT优化器的对象池
+        self.luajit_optimizer.buffer_pool:release(buffer)
+    else
+        -- 备用缓冲池
+        if #self.buffer_pool[buffer_type] < self.buffer_pool.pool_size then
+            table.insert(self.buffer_pool[buffer_type], buffer)
+        end
     end
 end
 

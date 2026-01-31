@@ -116,7 +116,7 @@ local function test_rowkey_encoding_consistency()
     print("\n=== 测试RowKey编码一致性 ===")
     
     -- 测试相同的输入是否产生相同的RowKey
-    local TSDBStorageEngineV3 = require "tsdb_storage_engine_v3"
+    local TSDBStorageEngineV3 = require "tsdb_storage_engine_v3_rocksdb"
     
     local config = {
         data_dir = "./test_data/encoding",

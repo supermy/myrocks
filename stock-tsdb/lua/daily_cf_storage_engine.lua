@@ -1,7 +1,10 @@
 -- 每日自动新建CF的存储引擎实现
--- 支持冷热数据分离、ZSTD压缩、关闭自动Compaction、秒级删除旧数据
+-- 支持冷热数据分离、ZSTD压缩、关闭自动Compaction、秒级删除旧数据、前缀压缩
 
 local ffi = require "ffi"
+
+-- 导入前缀压缩配置
+local PrefixCompressionConfig = require "prefix_compression_config"
 
 local DailyCFStorageEngine = {}
 DailyCFStorageEngine.__index = DailyCFStorageEngine
@@ -9,7 +12,7 @@ DailyCFStorageEngine.__index = DailyCFStorageEngine
 function DailyCFStorageEngine:new(config)
     local obj = setmetatable({}, DailyCFStorageEngine)
     obj.config = config or {}
-    obj.data = {}  -- 内存存储，模拟RocksDB
+    obj.data = {}  -- 文件系统存储模拟器
     obj.initialized = false
     
     -- 冷热数据分离配置
@@ -21,6 +24,11 @@ function DailyCFStorageEngine:new(config)
     obj.cold_cf_compression = config.cold_cf_compression or "zstd"  -- 冷数据CF压缩
     obj.cold_cf_disable_compaction = config.cold_cf_disable_compaction or true  -- 冷数据CF关闭自动Compaction
     obj.retention_days = config.retention_days or 30  -- 数据保留天数
+    
+    -- 前缀压缩配置
+    obj.enable_prefix_compression = config.enable_prefix_compression or true
+    obj.prefix_compression_strategies = config.prefix_compression_strategies or PrefixCompressionConfig.get_all_strategies()
+    obj.default_prefix_length = config.default_prefix_length or 6
     
     -- CF状态管理
     obj.column_families = {}  -- 存储所有CF的状态
@@ -38,6 +46,17 @@ function DailyCFStorageEngine:initialize()
     print("[配置] 冷数据CF压缩: " .. self.cold_cf_compression)
     print("[配置] 冷数据CF关闭Compaction: " .. tostring(self.cold_cf_disable_compaction))
     print("[配置] 数据保留天数: " .. self.retention_days .. "天")
+    print("[配置] 前缀压缩: " .. tostring(self.enable_prefix_compression))
+    print("[配置] 默认前缀长度: " .. self.default_prefix_length .. "字节")
+    
+    -- 打印前缀压缩策略
+    if self.enable_prefix_compression then
+        print("[前缀压缩] 已启用前缀压缩策略")
+        local prefix_summary = PrefixCompressionConfig.generate_summary()
+        print("[前缀压缩] 股票策略数量: " .. #prefix_summary.stock_strategies)
+        print("[前缀压缩] 时间序列策略数量: " .. #prefix_summary.timeseries_strategies)
+        print("[前缀压缩] CF映射数量: " .. #prefix_summary.cf_mapping)
+    end
     
     -- 初始化当前CF
     self:ensure_current_cf()
@@ -52,6 +71,9 @@ function DailyCFStorageEngine:ensure_current_cf()
     local cf_name = "cf_" .. current_date
     
     if not self.column_families[cf_name] then
+        -- 获取前缀压缩配置
+        local prefix_config = self:get_prefix_compression_config(cf_name, true)
+        
         -- 创建新的CF
         self.column_families[cf_name] = {
             name = cf_name,
@@ -59,15 +81,47 @@ function DailyCFStorageEngine:ensure_current_cf()
             is_hot = true,  -- 新创建的CF都是热数据
             compression = "lz4",  -- 热数据使用LZ4快速压缩
             disable_compaction = false,  -- 热数据启用Compaction
+            prefix_compression = prefix_config,
             data_points = 0
         }
-        print("[CF管理] 创建新CF: " .. cf_name)
+        print("[CF管理] 创建新CF: " .. cf_name .. " (压缩: lz4, Compaction: 开启, 前缀压缩: " .. prefix_config.strategy_name .. ")")
     end
     
     self.current_cf = cf_name
     self.last_cf_check = os.time()
     
     return cf_name
+end
+
+-- 获取前缀压缩配置
+function DailyCFStorageEngine:get_prefix_compression_config(cf_name, is_hot)
+    if not self.enable_prefix_compression then
+        return {
+            enabled = false,
+            strategy_name = "disabled",
+            prefix_length = 0
+        }
+    end
+    
+    -- 根据CF名称和热数据状态获取前缀策略
+    local strategy = PrefixCompressionConfig.get_strategy_for_cf(cf_name, is_hot)
+    
+    if strategy then
+        return {
+            enabled = true,
+            strategy_name = strategy.name,
+            prefix_length = strategy.prefix_length,
+            description = strategy.description
+        }
+    else
+        -- 使用默认策略
+        return {
+            enabled = true,
+            strategy_name = "default",
+            prefix_length = self.default_prefix_length,
+            description = "默认前缀压缩策略"
+        }
+    end
 end
 
 -- 获取指定时间戳对应的CF名称
@@ -94,27 +148,31 @@ function DailyCFStorageEngine:get_cf_name_for_timestamp(timestamp)
             
             -- 确保冷数据CF存在并正确配置
             if not self.column_families[cf_name] then
+                local prefix_config = self:get_prefix_compression_config(cf_name, false)
                 self.column_families[cf_name] = {
                     name = cf_name,
                     created_date = date_str,
                     is_hot = false,  -- 冷数据
                     compression = self.cold_cf_compression,  -- 使用配置的压缩算法
                     disable_compaction = self.cold_cf_disable_compaction,  -- 关闭自动Compaction
+                    prefix_compression = prefix_config,
                     data_points = 0
                 }
-                print("[CF管理] 创建冷数据CF: " .. cf_name .. " (压缩: " .. self.cold_cf_compression .. ", Compaction: " .. (self.cold_cf_disable_compaction and "关闭" or "开启") .. ")")
+                print("[CF管理] 创建冷数据CF: " .. cf_name .. " (压缩: " .. self.cold_cf_compression .. ", Compaction: " .. (self.cold_cf_disable_compaction and "关闭" or "开启") .. ", 前缀压缩: " .. prefix_config.strategy_name .. ")")
             end
         end
     end
     
     -- 确保CF存在
     if not self.column_families[cf_name] then
+        local prefix_config = self:get_prefix_compression_config(cf_name, true)
         self.column_families[cf_name] = {
             name = cf_name,
             created_date = date_str,
             is_hot = true,
             compression = "lz4",
             disable_compaction = false,
+            prefix_compression = prefix_config,
             data_points = 0
         }
     end
@@ -187,7 +245,10 @@ function DailyCFStorageEngine:get_stats()
         daily_cf_enabled = self.daily_cf_enabled,
         cold_cf_compression = self.cold_cf_compression,
         cold_cf_disable_compaction = self.cold_cf_disable_compaction,
-        retention_days = self.retention_days
+        retention_days = self.retention_days,
+        prefix_compression_enabled = self.enable_prefix_compression,
+        prefix_strategies_count = #self.prefix_compression_strategies,
+        default_prefix_length = self.default_prefix_length
     }
     
     for _ in pairs(self.data) do
@@ -202,7 +263,8 @@ function DailyCFStorageEngine:get_stats()
             is_hot = cf_info.is_hot,
             compression = cf_info.compression,
             disable_compaction = cf_info.disable_compaction,
-            created_date = cf_info.created_date
+            created_date = cf_info.created_date,
+            prefix_compression = cf_info.prefix_compression
         }
     end
     
@@ -224,12 +286,14 @@ function DailyCFStorageEngine:migrate_to_cold_data(timestamp)
         
         -- 创建冷数据CF（如果不存在）
         if not self.column_families[cold_cf_name] then
+            local prefix_config = self:get_prefix_compression_config(cold_cf_name, false)
             self.column_families[cold_cf_name] = {
                 name = cold_cf_name,
                 created_date = date_str,
                 is_hot = false,
                 compression = self.cold_cf_compression,
                 disable_compaction = self.cold_cf_disable_compaction,
+                prefix_compression = prefix_config,
                 data_points = 0
             }
         end

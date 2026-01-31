@@ -5,7 +5,7 @@ local BusinessInstanceManager = {}
 BusinessInstanceManager.__index = BusinessInstanceManager
 
 -- 导入必要的模块
-local tsdb = require "tsdb"
+local RocksDBFFI = require "rocksdb_ffi"
 local logger = require "logger"
 local config = require "config"
 
@@ -56,100 +56,77 @@ end
 function BusinessInstanceManager:start_instance(business_type)
     local instance_config = self:get_instance_config(business_type)
     if not instance_config then
-        error("找不到业务类型配置: " .. business_type)
+        logger.error("Instance config not found: " .. business_type)
+        return false, "Instance config not found"
     end
     
     if self.instances[business_type] then
-        print("[业务实例管理器] 业务实例已启动: " .. business_type)
-        return true
+        logger.warn("Instance already started: " .. business_type)
+        return true, "Instance already running"
     end
     
-    print("[业务实例管理器] 启动业务实例: " .. business_type)
+    -- 创建实例配置
+    local config = self:create_instance_config(instance_config)
     
-    -- 创建实例特定的配置
-    local instance_config = self:create_instance_config(instance_config)
+    -- 确保数据目录存在
+    local data_dir = config.storage.data_dir
+    local cmd = "mkdir -p " .. data_dir
+    os.execute(cmd)
     
-    -- 启动TSDB实例
-    local success, instance = pcall(function()
-        return tsdb:new(instance_config)
-    end)
+    -- 创建RocksDB数据库
+    local options = RocksDBFFI.create_options()
+    RocksDBFFI.set_create_if_missing(options, true)
     
-    if not success then
-        error("启动业务实例失败: " .. business_type .. " - " .. tostring(instance))
+    if config.storage.rocksdb_options.compression == "snappy" then
+        RocksDBFFI.set_compression(options, 1)  -- Snappy压缩
     end
     
-    -- 初始化实例
-    local init_success, init_error = pcall(function()
-        return instance:init()
-    end)
-    
-    if not init_success then
-        error("初始化业务实例失败: " .. business_type .. " - " .. tostring(init_error))
+    local db, err = RocksDBFFI.open_database(options, data_dir)
+    if not db then
+        logger.error("Failed to create RocksDB instance: " .. business_type .. ", error: " .. tostring(err))
+        return false, "Failed to create RocksDB instance: " .. tostring(err)
     end
     
+    -- 保存实例
     self.instances[business_type] = {
-        instance = instance,
-        config = instance_config,
-        status = "running",
-        start_time = os.time()
+        db = db,
+        config = config,
+        is_running = true,
+        start_time = os.time(),
+        data_dir = data_dir,
+        options = options
     }
     
-    print("[业务实例管理器] 业务实例启动成功: " .. business_type)
-    return true
+    logger.info("RocksDB instance started successfully: " .. business_type .. " at " .. data_dir)
+    return true, "RocksDB instance started successfully"
 end
 
 -- 创建实例特定的配置
 function BusinessInstanceManager:create_instance_config(instance_config)
     local config = {
-        server = {
-            port = instance_config.port,
-            bind = "127.0.0.1",
-            max_connections = instance_config.max_connections or 1000
-        },
         storage = {
             data_dir = instance_config.data_dir,
-            log_dir = "./logs/" .. instance_config.instance_id,
-            block_size = 30,
-            compression_level = 6,
-            enable_compression = true
-        },
-        rocksdb = {
-            write_buffer_size = (instance_config.write_buffer_size or 64) .. "MB",
-            max_file_size = "128MB",
-            target_file_size_base = "64MB",
-            block_cache_size = (instance_config.block_cache_size or 256) .. "MB",
-            enable_statistics = true
-        },
-        cluster = {
-            node_id = instance_config.instance_id,
-            cluster_mode = "single",
-            master_host = "127.0.0.1",
-            master_port = instance_config.port + 1000
+            rocksdb_options = {
+                write_buffer_size = instance_config.write_buffer_size or 64 * 1024 * 1024,
+                block_cache_size = instance_config.block_cache_size or 128 * 1024 * 1024,
+                max_write_buffer_number = instance_config.max_write_buffer_number or 4,
+                min_write_buffer_number_to_merge = instance_config.min_write_buffer_number_to_merge or 1,
+                compression = instance_config.compression or "snappy",
+                create_if_missing = true,
+                error_if_exists = false
+            }
         },
         data_retention = {
-            hot_data_days = instance_config.cold_hot_config.hot_data_days,
-            warm_data_days = 30,
-            cold_data_days = 365,
-            auto_cleanup = true,
-            cleanup_interval = 24
+            hot_data_days = instance_config.hot_data_days or 7,
+            warm_data_days = instance_config.warm_data_days or 30,
+            cold_data_days = instance_config.cold_data_days or 365
         },
         performance = {
-            batch_size = 1000,
-            query_cache_size = 10000,
-            write_rate_limit = 0,
-            query_concurrency = 8
+            batch_size = instance_config.batch_size or 1000,
+            query_cache_size = instance_config.query_cache_size or 10000
         },
-        monitoring = {
-            enable_monitoring = true,
-            monitor_port = instance_config.port + 2000,
-            monitor_retention = 24
-        },
-        logging = {
-            log_level = self.manager_config.log_level or "info",
-            max_log_size = 100,
-            log_retention_days = 7,
-            enable_console_log = true,
-            enable_file_log = true
+        monitor = {
+            port = instance_config.monitor_port or 9090
         }
     }
     
@@ -160,22 +137,32 @@ end
 function BusinessInstanceManager:stop_instance(business_type)
     local instance_info = self.instances[business_type]
     if not instance_info then
-        print("[业务实例管理器] 业务实例未运行: " .. business_type)
-        return true
+        logger.warn("Instance not found: " .. business_type)
+        return false, "Instance not found"
     end
     
-    print("[业务实例管理器] 停止业务实例: " .. business_type)
-    
-    -- 停止实例
-    if instance_info.instance and instance_info.instance.close then
-        pcall(function()
-            instance_info.instance:close()
-        end)
+    if not instance_info.is_running then
+        logger.warn("Instance already stopped: " .. business_type)
+        return true, "Instance already stopped"
     end
     
-    self.instances[business_type] = nil
-    print("[业务实例管理器] 业务实例停止成功: " .. business_type)
-    return true
+    -- 关闭RocksDB数据库
+    if instance_info.db then
+        RocksDBFFI.close_database(instance_info.db)
+    end
+    
+    -- 清理选项
+    if instance_info.options then
+        -- 选项会在垃圾回收时自动销毁
+        instance_info.options = nil
+    end
+    
+    -- 更新实例状态
+    instance_info.is_running = false
+    instance_info.stop_time = os.time()
+    
+    logger.info("RocksDB instance stopped successfully: " .. business_type)
+    return true, "RocksDB instance stopped successfully"
 end
 
 -- 启动所有业务实例

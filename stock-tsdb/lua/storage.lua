@@ -4,7 +4,7 @@
 --
 
 local storage = {}
-local StorageEngine = require "tsdb_storage_engine_v3"
+local StorageEngine = require "tsdb_storage_engine_v3_rocksdb"
 
 -- 验证键的有效性
 function storage.validate_key(key)

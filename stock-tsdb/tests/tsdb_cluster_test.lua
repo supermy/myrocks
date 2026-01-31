@@ -7,7 +7,7 @@
 package.path = package.path .. ";./?.lua;./lua/?.lua"
 
 local consistent_hash_cluster = require "../examples/cluster/consistent_hash_cluster"
-local tsdb_storage_engine_v3 = require "tsdb_storage_engine_v3"
+local tsdb_storage_engine_v3 = require "tsdb_storage_engine_v3_rocksdb"
 local cjson = require "cjson"
 
 -- 测试配置

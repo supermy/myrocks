@@ -4,7 +4,14 @@
 -- 为股票行情、IOT、金融行情、订单、支付、库存、短信下发等业务启动独立的数据库实例
 
 -- 设置包路径以包含lib目录
-package.cpath = package.cpath .. ";./lib/?.so"
+local base_path = "/Users/moyong/project/ai/myrocks/stock-tsdb"
+package.cpath = package.cpath .. ";" .. base_path .. "/lib/?.so"
+
+-- 设置Lua模块路径以包含lua目录
+package.path = package.path .. ";" .. base_path .. "/lua/?.lua"
+
+-- 确保cjson模块可以正确加载
+package.cpath = package.cpath .. ";" .. base_path .. "/lib/cjson.so"
 
 -- 导入必要的模块
 local BusinessInstanceManager = require "lua.business_instance_manager"

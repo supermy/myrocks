@@ -4,7 +4,7 @@
 package.path = package.path .. ";./?.lua;./lua/?.lua"
 
 local ffi = require("ffi")
-local V3StorageEngine = require("tsdb_storage_engine_v3")
+local V3StorageEngine = require("tsdb_storage_engine_v3_rocksdb")
 
 -- 创建V3基础版本存储引擎
 local function create_v3_engine()

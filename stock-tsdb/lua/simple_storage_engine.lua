@@ -7,7 +7,7 @@ SimpleStorageEngine.__index = SimpleStorageEngine
 function SimpleStorageEngine:new(config)
     local obj = setmetatable({}, SimpleStorageEngine)
     obj.config = config or {}
-    obj.data = {}  -- 内存存储
+    obj.data = {}  -- 文件系统存储模拟器
     obj.initialized = false
     return obj
 end

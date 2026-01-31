@@ -3,11 +3,11 @@
 -- 元数据Web管理服务器启动脚本
 
 -- 设置包路径
-package.path = package.path .. ";./lua/?.lua;./?.lua"
-package.cpath = package.cpath .. ";./lib/?.so"
+package.path = package.path .. ";./lua/?.lua;./?.lua;../lua/?.lua;../?.lua"
+package.cpath = package.cpath .. ";./lib/?.so;../lib/?.so"
 
 -- 导入必要的模块
-local MetadataWebServer = require "web.metadata_web_server"
+local MetadataWebServer = require "metadata_web_server"
 local ConfigManager = require "config_manager"
 
 -- 创建配置管理器实例
